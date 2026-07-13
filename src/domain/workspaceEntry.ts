@@ -1,3 +1,6 @@
+import { posix } from 'node:path';
+import { Uri } from 'vscode';
+
 export type WorkspaceSourceId = `configured:${string}` | `current:${string}`;
 
 export interface WorkspaceEntry {
@@ -10,13 +13,12 @@ export interface WorkspaceEntry {
 }
 
 export function isWorkspaceFileUri(uri: string): boolean {
-  return uri.toLowerCase().endsWith('.code-workspace');
+  return posix.extname(Uri.parse(uri).path).toLowerCase() === '.code-workspace';
 }
 
 export function workspaceLabel(entry: WorkspaceEntry): string {
   if (entry.alias?.trim()) return entry.alias.trim();
-  const pathname = new URL(entry.uri).pathname;
-  const filename = decodeURIComponent(pathname.slice(pathname.lastIndexOf('/') + 1));
+  const filename = posix.basename(Uri.parse(entry.uri).path);
   return filename.replace(/\.code-workspace$/i, '');
 }
 

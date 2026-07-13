@@ -30,6 +30,7 @@
     "eslint": "latest",
     "typescript": "latest",
     "typescript-eslint": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "vscode-uri": "latest"
   }
 }

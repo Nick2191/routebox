@@ -20,9 +20,30 @@ describe('workspace entries', () => {
     expect(workspaceLabel(entry('file:///work/bois.code-workspace'))).toBe('bois');
   });
 
-  it('accepts only code-workspace URIs case-insensitively', () => {
+  it('handles Windows drive-letter file URIs', () => {
+    const uri = 'file:///C:/Users/Nick/My%20Workspace.CODE-WORKSPACE?profile=windows';
+
+    expect(isWorkspaceFileUri(uri)).toBe(true);
+    expect(workspaceLabel(entry(uri))).toBe('My Workspace');
+  });
+
+  it('handles UNC file URIs', () => {
+    const uri = 'file://workspace-server/projects/Team%20Atlas.code-workspace#current';
+
+    expect(isWorkspaceFileUri(uri)).toBe(true);
+    expect(workspaceLabel(entry(uri))).toBe('Team Atlas');
+  });
+
+  it('decodes percent-encoded workspace filenames', () => {
+    const uri = 'file:///work/R%26D%20Atlas%2Ecode-workspace';
+
+    expect(isWorkspaceFileUri(uri)).toBe(true);
+    expect(workspaceLabel(entry(uri))).toBe('R&D Atlas');
+  });
+
+  it('accepts only code-workspace URI paths case-insensitively', () => {
     expect(isWorkspaceFileUri('file:///work/a.code-workspace')).toBe(true);
-    expect(isWorkspaceFileUri('file:///work/a.CODE-WORKSPACE')).toBe(true);
+    expect(isWorkspaceFileUri('file:///work/a.CoDe-WoRkSpAcE?profile=case-test')).toBe(true);
     expect(isWorkspaceFileUri('file:///work/a.json')).toBe(false);
   });
 
