@@ -3,6 +3,7 @@
   "displayName": "Workspace Atlas",
   "description": "Discover, organize, and switch between .code-workspace files.",
   "version": "0.1.0",
+  "preview": true,
   "publisher": "nick",
   "license": "MIT",
   "engines": {

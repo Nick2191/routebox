@@ -1,10 +1,15 @@
 .github/**
 .vscode/**
+.superpowers/**
+.vscode-test*
+.gitignore
 src/**
 node_modules/**
 out/**
 coverage/**
 docs/**
+dist/**/*.map
+*.vsix
 *.config.*
 esbuild.mjs
 tsconfig*.json
