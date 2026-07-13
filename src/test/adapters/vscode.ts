@@ -33,6 +33,55 @@ export class FileSystemError extends Error {
   static Unavailable(): FileSystemError { return new FileSystemError('Unavailable', 'Unavailable'); }
 }
 
+export interface Disposable { dispose(): void }
+
+export class EventEmitter<T> implements Disposable {
+  private readonly listeners = new Set<(value: T) => unknown>();
+  readonly event = (listener: (value: T) => unknown): Disposable => {
+    this.listeners.add(listener);
+    return { dispose: (): void => { this.listeners.delete(listener); } };
+  };
+
+  fire(value: T): void {
+    for (const listener of this.listeners) listener(value);
+  }
+
+  dispose(): void { this.listeners.clear(); }
+}
+
+export enum TreeItemCollapsibleState {
+  None = 0,
+  Collapsed = 1,
+  Expanded = 2,
+}
+
+export class ThemeIcon {
+  constructor(readonly id: string) {}
+}
+
+export class MarkdownString {
+  constructor(public value = '') {}
+}
+
+export class TreeItem {
+  description?: string;
+  tooltip?: string | MarkdownString;
+  contextValue?: string;
+  iconPath?: ThemeIcon;
+  command?: { command: string; title: string; arguments?: unknown[] };
+
+  constructor(
+    public label?: string,
+    public collapsibleState = TreeItemCollapsibleState.None,
+  ) {}
+}
+
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
 interface TestFileSystem {
   stat(uri: URI): Promise<{ type: FileType; ctime: number; mtime: number; size: number }>;
   readDirectory(uri: URI): Promise<[string, FileType][]>;
@@ -73,9 +122,102 @@ export function setFileSystemWatcherFactory(
   watcherFactory = value;
 }
 
+interface TestWorkspaceConfiguration {
+  get<T>(section: string, defaultValue: T): T;
+  update(section: string, value: unknown, target: ConfigurationTarget): Promise<void>;
+}
+
+let configurationFactory = (section: string): TestWorkspaceConfiguration => {
+  void section;
+  return {
+    get: <T>(_key: string, defaultValue: T): T => defaultValue,
+    update: () => Promise.resolve(),
+  };
+};
+
+export function setConfigurationFactory(
+  value: (section: string) => TestWorkspaceConfiguration,
+): void {
+  configurationFactory = value;
+}
+
 export const workspace = {
   get fs(): TestFileSystem { return fileSystem; },
+  getConfiguration(section: string): TestWorkspaceConfiguration {
+    return configurationFactory(section);
+  },
   createFileSystemWatcher(pattern: RelativePattern): TestFileSystemWatcher {
     return watcherFactory(pattern);
+  },
+};
+
+type CommandCallback = (...args: unknown[]) => unknown;
+let commandRegistration = (id: string, callback: CommandCallback): Disposable => {
+  void id;
+  void callback;
+  return { dispose(): void {} };
+};
+let commandExecution = (id: string, ...args: unknown[]): Promise<unknown> => {
+  void id;
+  void args;
+  return Promise.resolve();
+};
+
+export function setCommandRegistration(
+  value: (id: string, callback: CommandCallback) => Disposable,
+): void {
+  commandRegistration = value;
+}
+
+export function setCommandExecution(
+  value: (id: string, ...args: unknown[]) => Promise<unknown>,
+): void {
+  commandExecution = value;
+}
+
+export const commands = {
+  registerCommand(id: string, callback: CommandCallback): Disposable {
+    return commandRegistration(id, callback);
+  },
+  executeCommand(id: string, ...args: unknown[]): Promise<unknown> {
+    return commandExecution(id, ...args);
+  },
+};
+
+interface OpenDialogOptions {
+  canSelectFiles?: boolean;
+  canSelectFolders?: boolean;
+  canSelectMany?: boolean;
+  filters?: Record<string, string[]>;
+}
+
+interface QuickPickOptions { placeHolder?: string }
+interface InputBoxOptions { prompt?: string; value?: string }
+
+export const window = {
+  showOpenDialog(options: OpenDialogOptions): Promise<URI[] | undefined> {
+    void options;
+    return Promise.resolve(undefined);
+  },
+  showQuickPick<T>(items: readonly T[], options?: QuickPickOptions): Promise<T | undefined> {
+    void items;
+    void options;
+    return Promise.resolve(undefined);
+  },
+  showInputBox(options?: InputBoxOptions): Promise<string | undefined> {
+    void options;
+    return Promise.resolve(undefined);
+  },
+  showInformationMessage(message: string): Promise<string | undefined> {
+    void message;
+    return Promise.resolve(undefined);
+  },
+  showWarningMessage(message: string): Promise<string | undefined> {
+    void message;
+    return Promise.resolve(undefined);
+  },
+  showErrorMessage(message: string): Promise<string | undefined> {
+    void message;
+    return Promise.resolve(undefined);
   },
 };
