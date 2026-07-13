@@ -37,6 +37,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
   const discovery = new WorkspaceDiscoveryService(fs);
   const reconciler = new WorkspaceReconciler(registry, fs);
+  const tree = new WorkspaceTreeProvider(registry, current);
   const coordinator = new DiscoveryCoordinator({
     settings,
     current,
@@ -44,6 +45,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     discovery,
     reconciler,
     registry,
+    onDidRefresh: (): void => { tree.refresh(); },
   });
   const opener = new WorkspaceOpener(
     registry,
@@ -56,15 +58,13 @@ export async function activate(context: ExtensionContext): Promise<void> {
     },
     { now: (): number => Date.now() },
   );
-  const tree = new WorkspaceTreeProvider(registry, current);
   const treeView = window.createTreeView('workspaceAtlas.workspaces', {
     treeDataProvider: tree,
   });
 
   const refresh = (reason: RefreshReason): void => {
-    void coordinator.refresh(reason).then(
-      () => { tree.refresh(); },
-      (error: unknown) => {
+    void coordinator.refresh(reason).catch(
+      (error: unknown): void => {
         const detail = error instanceof Error ? error.message : String(error);
         void window.showWarningMessage(`Workspace Atlas could not refresh workspaces: ${detail}`);
       },

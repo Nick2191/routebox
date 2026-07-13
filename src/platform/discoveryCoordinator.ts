@@ -44,6 +44,7 @@ export interface DiscoveryCoordinatorOptions {
   discovery: DiscoveryPort;
   reconciler: ReconcilerPort;
   registry: RegistryPort;
+  onDidRefresh?: (reason: RefreshReason, result: RefreshResult) => void;
   createWatcher?: (rootUri: string) => WorkspaceWatcher;
 }
 
@@ -63,10 +64,13 @@ export class DiscoveryCoordinator {
   constructor(private readonly options: DiscoveryCoordinatorOptions) {}
 
   refresh(reason: RefreshReason): Promise<RefreshResult> {
-    void reason;
     const result = this.refreshQueue.then(() => this.performRefresh());
-    this.refreshQueue = result.then(() => undefined, () => undefined);
-    return result;
+    const completed = result.then(value => {
+      if (!this.disposed) this.options.onDidRefresh?.(reason, value);
+      return value;
+    });
+    this.refreshQueue = completed.then(() => undefined, () => undefined);
+    return completed;
   }
 
   updateWatchers(): void {

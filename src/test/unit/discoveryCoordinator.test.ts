@@ -5,6 +5,8 @@ import type { WorkspaceEntry, WorkspaceSourceId } from '../../domain/workspaceEn
 import {
   DiscoveryCoordinator,
   type DiscoveryCoordinatorOptions,
+  type RefreshReason,
+  type RefreshResult,
 } from '../../platform/discoveryCoordinator.js';
 import {
   RelativePattern,
@@ -139,6 +141,7 @@ class FakeWatcher {
 function createHarness(
   discovery: FakeDiscovery = new FakeDiscovery(),
   useDefaultWatcher = false,
+  onDidRefresh?: (reason: RefreshReason, result: RefreshResult) => void,
 ): {
   coordinator: DiscoveryCoordinator;
   current: { workspaceFile: string | undefined; workspaceFileUri(): string | undefined };
@@ -183,6 +186,7 @@ function createHarness(
   const coordinator = new DiscoveryCoordinator({
     ...options,
     ...(useDefaultWatcher ? {} : { createWatcher }),
+    ...(onDidRefresh ? { onDidRefresh } : {}),
   });
   return {
     coordinator,
@@ -334,7 +338,8 @@ describe('DiscoveryCoordinator', () => {
 
   it('does not recreate watchers when queued and in-flight refreshes complete after disposal', async () => {
     const discovery = new BlockingDiscovery();
-    const { coordinator, settings, watchers } = createHarness(discovery);
+    const treeChange = vi.fn();
+    const { coordinator, settings, watchers } = createHarness(discovery, false, treeChange);
     settings.roots = ['file:///configured'];
     const refresh = coordinator.refresh('activation');
     const queuedRefresh = coordinator.refresh('watcher');
@@ -345,6 +350,7 @@ describe('DiscoveryCoordinator', () => {
     await Promise.all([refresh, queuedRefresh]);
 
     expect(watchers).toEqual([]);
+    expect(treeChange).not.toHaveBeenCalled();
   });
 
   it('debounces watcher bursts into one refresh', async () => {
@@ -362,6 +368,45 @@ describe('DiscoveryCoordinator', () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(discovery.scanned).toEqual(['file:///configured']);
+  });
+
+  it('notifies the registered tree change after a debounced watcher refresh reconciles', async () => {
+    vi.useFakeTimers();
+    const state: { reconciler?: FakeReconciler } = {};
+    const treeChange = vi.fn((reason: RefreshReason, result: RefreshResult): void => {
+      expect(state.reconciler?.reconciled).toHaveLength(1);
+      expect(reason).toBe('watcher');
+      expect(result).toEqual({ removed: 0, errors: [] });
+    });
+    const harness = createHarness(new FakeDiscovery(), false, treeChange);
+    state.reconciler = harness.reconciler;
+    harness.settings.roots = ['file:///configured'];
+    harness.coordinator.updateWatchers();
+    const watcher = harness.watchers[0];
+    if (!watcher) throw new Error('Expected a watcher');
+
+    watcher.fireCreate('file:///configured/a.code-workspace');
+    watcher.fireDelete('file:///configured/b.code-workspace');
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(treeChange).toHaveBeenCalledOnce();
+  });
+
+  it('does not notify after a failed watcher refresh', async () => {
+    vi.useFakeTimers();
+    const treeChange = vi.fn();
+    const harness = createHarness(new FakeDiscovery(), false, treeChange);
+    harness.settings.roots = ['file:///configured'];
+    harness.reconciler.removeMissingError = new Error('Registry write failed');
+    harness.coordinator.updateWatchers();
+    const watcher = harness.watchers[0];
+    if (!watcher) throw new Error('Expected a watcher');
+
+    watcher.fireCreate('file:///configured/a.code-workspace');
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(harness.reconciler.removeMissingCount).toBe(1);
+    expect(treeChange).not.toHaveBeenCalled();
   });
 
   it('rebuilds watchers for changed roots and disposes all resources', () => {
