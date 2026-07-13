@@ -65,6 +65,18 @@ describe('WorkspaceTreeProvider', () => {
     expect(tooltip).toContain('**Current Workspace.code-workspace**');
     expect(tooltip).toContain(Uri.parse(current.uri).fsPath);
     expect(tooltip).toContain('Current workspace area');
+    expect(tooltip).toContain('Status: Current');
+  });
+
+  it('identifies a non-current workspace as available in its tooltip', () => {
+    const item = createProvider().getChildren()[1];
+
+    expect(item?.tooltip).toBeInstanceOf(MarkdownString);
+    const tooltip = (item?.tooltip as MarkdownString).value;
+    expect(tooltip).toContain('**alpha.code-workspace**');
+    expect(tooltip).toContain(Uri.parse(manual.uri).fsPath);
+    expect(tooltip).toContain('Manually registered');
+    expect(tooltip).toContain('Status: Available');
   });
 
   it('returns the native item and fires one tree-change event on refresh', () => {

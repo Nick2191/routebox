@@ -26,7 +26,7 @@ export class WorkspaceTreeItem extends TreeItem {
 
     this.description = current ? 'Current' : undefined;
     this.tooltip = new MarkdownString(
-      `**${filename}**\n\n${uri.fsPath}\n\n${workspaceProvenance(entry)}`,
+      `**${filename}**\n\n${uri.fsPath}\n\nStatus: ${current ? 'Current' : 'Available'}\n\n${workspaceProvenance(entry)}`,
     );
     this.contextValue = entry.manuallyRegistered
       ? 'workspace.manual'
