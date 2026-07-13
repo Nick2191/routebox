@@ -11,9 +11,15 @@ function isEntry(value: unknown): value is WorkspaceEntry {
   return typeof item.id === 'string'
     && typeof item.uri === 'string'
     && isWorkspaceFileUri(item.uri)
+    && (item.alias === undefined || typeof item.alias === 'string')
     && typeof item.manuallyRegistered === 'boolean'
     && Array.isArray(item.discoveredFrom)
-    && item.discoveredFrom.every(source => typeof source === 'string');
+    && item.discoveredFrom.every(source => typeof source === 'string')
+    && (item.lastOpenedAt === undefined || typeof item.lastOpenedAt === 'number');
+}
+
+function copyEntry(entry: WorkspaceEntry): WorkspaceEntry {
+  return { ...entry, discoveredFrom: [...entry.discoveredFrom] };
 }
 
 export class WorkspaceRegistry {
@@ -25,18 +31,18 @@ export class WorkspaceRegistry {
     const stored = await this.storage.read();
     const values = Array.isArray(stored) ? stored : [];
     const valid = values.filter(isEntry);
-    this.entries = new Map(valid.map(entry => [entry.id, { ...entry }]));
+    this.entries = new Map(valid.map(entry => [entry.id, copyEntry(entry)]));
     return {
       discarded: values.length - valid.length,
       reset: stored !== undefined && !Array.isArray(stored),
     };
   }
 
-  list(): WorkspaceEntry[] { return [...this.entries.values()].map(entry => ({ ...entry })); }
+  list(): WorkspaceEntry[] { return [...this.entries.values()].map(copyEntry); }
 
   get(id: string): WorkspaceEntry | undefined {
     const entry = this.entries.get(id);
-    return entry ? { ...entry } : undefined;
+    return entry ? copyEntry(entry) : undefined;
   }
 
   async upsertManual(uri: string): Promise<WorkspaceEntry> {
@@ -47,7 +53,7 @@ export class WorkspaceRegistry {
       : { id: uri, uri, manuallyRegistered: true, discoveredFrom: [] };
     this.entries.set(entry.id, entry);
     await this.persist();
-    return { ...entry };
+    return copyEntry(entry);
   }
 
   async setAlias(id: string, alias: string): Promise<void> {
@@ -67,7 +73,7 @@ export class WorkspaceRegistry {
   }
 
   async replace(entries: readonly WorkspaceEntry[]): Promise<void> {
-    this.entries = new Map(entries.map(entry => [entry.id, { ...entry }]));
+    this.entries = new Map(entries.map(entry => [entry.id, copyEntry(entry)]));
     await this.persist();
   }
 
