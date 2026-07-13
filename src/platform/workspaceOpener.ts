@@ -1,3 +1,4 @@
+import { Uri } from 'vscode';
 import type { FileSystemPort } from '../domain/discovery.js';
 import type { WorkspaceRegistry } from '../domain/workspaceRegistry.js';
 
@@ -30,7 +31,7 @@ export class WorkspaceOpener {
     const options = mode === 'reuse'
       ? { forceReuseWindow: true }
       : { forceNewWindow: true };
-    await this.commands.execute('vscode.openFolder', entry.uri, options);
+    await this.commands.execute('vscode.openFolder', Uri.parse(entry.uri), options);
     await this.registry.markOpened(id, this.clock.now());
     return { status: 'opened' };
   }

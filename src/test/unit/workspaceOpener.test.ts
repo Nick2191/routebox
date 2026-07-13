@@ -1,3 +1,4 @@
+import { Uri } from 'vscode';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FileKind, FileSystemPort } from '../../domain/discovery.js';
 import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
@@ -71,7 +72,7 @@ describe('WorkspaceOpener', () => {
     await expect(opener.open(entry.id, 'reuse')).resolves.toEqual({ status: 'opened' });
 
     expect(commands.calls).toEqual([
-      ['vscode.openFolder', entry.uri, { forceReuseWindow: true }],
+      ['vscode.openFolder', Uri.parse(entry.uri), { forceReuseWindow: true }],
     ]);
     expect(registry.get(entry.id)?.lastOpenedAt).toBe(123);
   });
@@ -80,7 +81,7 @@ describe('WorkspaceOpener', () => {
     await opener.open(entry.id, 'new');
 
     expect(commands.calls).toEqual([
-      ['vscode.openFolder', entry.uri, { forceNewWindow: true }],
+      ['vscode.openFolder', Uri.parse(entry.uri), { forceNewWindow: true }],
     ]);
   });
 

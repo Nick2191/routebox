@@ -1,3 +1,4 @@
+import { Uri } from 'vscode';
 import { describe, expect, it } from 'vitest';
 import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
 import { buildWorkspaceQuickPickItems } from '../../ui/workspaceQuickPick.js';
@@ -19,7 +20,7 @@ describe('buildWorkspaceQuickPickItems', () => {
     expect(buildWorkspaceQuickPickItems([entry], entry.uri)[0]).toMatchObject({
       label: '$(circle-filled) Alpha',
       description: 'a.code-workspace · Current',
-      detail: '/work/a.code-workspace',
+      detail: Uri.parse(entry.uri).fsPath,
       entry,
     });
   });
@@ -30,9 +31,18 @@ describe('buildWorkspaceQuickPickItems', () => {
     expect(buildWorkspaceQuickPickItems([entry])[0]).toMatchObject({
       label: 'My Workspace',
       description: 'My Workspace.code-workspace',
-      detail: '/work/My Workspace.code-workspace',
+      detail: Uri.parse(entry.uri).fsPath,
       entry,
     });
+  });
+
+  it.each([
+    'file:///C:/Users/Nick/My%20Workspace.code-workspace',
+    'file://workspace-server/projects/Team%20Atlas.code-workspace',
+  ])('uses the VS Code native display path for %s', uri => {
+    const entry = workspaceEntry(uri);
+
+    expect(buildWorkspaceQuickPickItems([entry])[0]?.detail).toBe(Uri.parse(uri).fsPath);
   });
 
   it('sorts the current entry first and remaining entries by effective label', () => {
