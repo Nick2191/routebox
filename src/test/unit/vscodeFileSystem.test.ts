@@ -40,6 +40,14 @@ describe('VscodeFileSystem', () => {
       .toBe('file:///c:/My Work/project.code-workspace');
   });
 
+  it('canonicalizes Windows UNC paths without losing the authority or share', () => {
+    const fs = new VscodeFileSystem();
+
+    expect(fs.canonicalize(
+      'file://fileserver/Team%20Share/projects/../workspace.code-workspace',
+    )).toBe('file://fileserver/Team Share/workspace.code-workspace');
+  });
+
   it('computes a URI parent while preserving scheme and authority', () => {
     const fs = new VscodeFileSystem();
 

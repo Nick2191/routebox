@@ -1,4 +1,4 @@
-import { RelativePattern, Uri, workspace, type Disposable } from 'vscode';
+import { FileSystemError, RelativePattern, Uri, workspace, type Disposable } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../domain/discovery.js';
 import type { WorkspaceEntry, WorkspaceSourceId } from '../domain/workspaceEntry.js';
 
@@ -58,6 +58,7 @@ export class DiscoveryCoordinator {
   private watchedRootsKey = '';
   private watcherResources: Disposable[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private disposed = false;
 
   constructor(private readonly options: DiscoveryCoordinatorOptions) {}
 
@@ -69,23 +70,32 @@ export class DiscoveryCoordinator {
   }
 
   updateWatchers(): void {
+    if (this.disposed) return;
     const roots = this.activeRoots();
     const rootsKey = JSON.stringify(roots);
     if (rootsKey === this.watchedRootsKey) return;
 
-    this.disposeWatchers();
-    this.watchedRootsKey = rootsKey;
-    for (const root of roots) {
-      const watcher = this.createWatcher(root);
-      this.watcherResources.push(
-        watcher,
-        watcher.onDidCreate(() => { this.scheduleWatcherRefresh(); }),
-        watcher.onDidDelete(() => { this.scheduleWatcherRefresh(); }),
-      );
+    const replacements: Disposable[] = [];
+    try {
+      for (const root of roots) {
+        const watcher = this.createWatcher(root);
+        replacements.push(watcher);
+        replacements.push(watcher.onDidCreate(() => { this.scheduleWatcherRefresh(); }));
+        replacements.push(watcher.onDidDelete(() => { this.scheduleWatcherRefresh(); }));
+      }
+    } catch (error) {
+      this.disposeResources(replacements);
+      throw error;
     }
+
+    const previous = this.watcherResources;
+    this.watcherResources = replacements;
+    this.watchedRootsKey = rootsKey;
+    this.disposeResources(previous);
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = undefined;
@@ -142,7 +152,12 @@ export class DiscoveryCoordinator {
       if (result.status === 'error') errors.push(result);
       await this.options.reconciler.reconcileSource(source, result);
     }
-    const { removed } = await this.options.reconciler.removeMissing();
+    let removed = 0;
+    try {
+      ({ removed } = await this.options.reconciler.removeMissing());
+    } catch (error) {
+      if (errors.length === 0 || !(error instanceof FileSystemError)) throw error;
+    }
     this.updateWatchers();
     return { removed, errors };
   }
@@ -159,6 +174,7 @@ export class DiscoveryCoordinator {
   }
 
   private scheduleWatcherRefresh(): void {
+    if (this.disposed) return;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = undefined;
@@ -174,7 +190,11 @@ export class DiscoveryCoordinator {
   }
 
   private disposeWatchers(): void {
-    for (const resource of this.watcherResources) resource.dispose();
+    this.disposeResources(this.watcherResources);
     this.watcherResources = [];
+  }
+
+  private disposeResources(resources: readonly Disposable[]): void {
+    for (const resource of resources) resource.dispose();
   }
 }

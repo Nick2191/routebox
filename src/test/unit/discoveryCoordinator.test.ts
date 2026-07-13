@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Uri } from 'vscode';
+import { FileSystemError, Uri } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../../domain/discovery.js';
 import type { WorkspaceEntry, WorkspaceSourceId } from '../../domain/workspaceEntry.js';
 import {
@@ -83,12 +83,13 @@ class FakeReconciler {
   readonly reconciled: Array<{ source: WorkspaceSourceId; result: DiscoveryResult }> = [];
   removed = 0;
   removeMissingCount = 0;
+  removeMissingError: Error | undefined;
 
   constructor(private readonly registry: FakeRegistry) {}
 
   reconcileSource(source: WorkspaceSourceId, result: DiscoveryResult): Promise<void> {
     this.reconciled.push({ source, result });
-    this.registry.seedDiscoveredSource(source);
+    if (result.status === 'ok') this.registry.seedDiscoveredSource(source);
     return Promise.resolve();
   }
   retireSource(source: WorkspaceSourceId): Promise<void> {
@@ -100,6 +101,7 @@ class FakeReconciler {
   }
   removeMissing(): Promise<{ removed: number }> {
     this.removeMissingCount += 1;
+    if (this.removeMissingError) return Promise.reject(this.removeMissingError);
     return Promise.resolve({ removed: this.removed });
   }
 }
@@ -108,6 +110,10 @@ class FakeWatcher {
   private readonly createListeners = new Set<(uri: Uri) => unknown>();
   private readonly deleteListeners = new Set<(uri: Uri) => unknown>();
   disposed = false;
+
+  get subscriptionCount(): number {
+    return this.createListeners.size + this.deleteListeners.size;
+  }
 
   onDidCreate(listener: (uri: Uri) => unknown): { dispose(): void } {
     this.createListeners.add(listener);
@@ -142,6 +148,7 @@ function createHarness(
   registry: FakeRegistry;
   settings: { roots: string[]; configuredRoots(): readonly string[] };
   watchedRoots: string[];
+  watcherFailures: Set<string>;
   watchers: FakeWatcher[];
 } {
   const settings = {
@@ -157,6 +164,7 @@ function createHarness(
   const reconciler = new FakeReconciler(registry);
   const watchers: FakeWatcher[] = [];
   const watchedRoots: string[] = [];
+  const watcherFailures = new Set<string>();
   const options = {
     settings,
     current,
@@ -167,6 +175,7 @@ function createHarness(
   } satisfies Omit<DiscoveryCoordinatorOptions, 'createWatcher'>;
   const createWatcher = (root: string): FakeWatcher => {
     watchedRoots.push(root);
+    if (watcherFailures.has(root)) throw new Error(`Cannot watch ${root}`);
     const watcher = new FakeWatcher();
     watchers.push(watcher);
     return watcher;
@@ -184,6 +193,7 @@ function createHarness(
     registry,
     settings,
     watchedRoots,
+    watcherFailures,
     watchers,
   };
 }
@@ -232,6 +242,17 @@ describe('DiscoveryCoordinator', () => {
     expect(reconciler.retired).toContain('configured:file:///removed');
   });
 
+  it('retires a configured source removed after a successful refresh on the same instance', async () => {
+    const { coordinator, reconciler, settings } = createHarness();
+    settings.roots = ['file:///removed'];
+    await coordinator.refresh('activation');
+    settings.roots = [];
+
+    await coordinator.refresh('settings-change');
+
+    expect(reconciler.retired).toContain('configured:file:///removed');
+  });
+
   it('returns removed entries and scan errors from a manual refresh', async () => {
     const { coordinator, discovery, reconciler, settings } = createHarness();
     settings.roots = ['file:///good', 'file:///unreadable'];
@@ -250,6 +271,37 @@ describe('DiscoveryCoordinator', () => {
       }],
     });
     expect(reconciler.removeMissingCount).toBe(1);
+  });
+
+  it('preserves inaccessible entries and scan errors when missing-file cleanup is denied', async () => {
+    const { coordinator, discovery, reconciler, registry, settings } = createHarness();
+    settings.roots = ['file:///inaccessible'];
+    registry.seedDiscoveredSource('configured:file:///inaccessible');
+    const before = registry.list();
+    discovery.failures.add('file:///inaccessible');
+    reconciler.removeMissingError = FileSystemError.NoPermissions();
+
+    await expect(coordinator.refresh('manual')).resolves.toEqual({
+      removed: 0,
+      errors: [{
+        rootUri: 'file:///inaccessible',
+        workspaceUris: [],
+        status: 'error',
+        error: 'Cannot scan file:///inaccessible',
+      }],
+    });
+    expect(registry.list()).toEqual(before);
+    expect(reconciler.removeMissingCount).toBe(1);
+  });
+
+  it('does not hide unexpected cleanup failures behind a scan error', async () => {
+    const { coordinator, discovery, reconciler, settings } = createHarness();
+    settings.roots = ['file:///unreadable'];
+    discovery.failures.add('file:///unreadable');
+    const unexpected = new Error('Registry write failed');
+    reconciler.removeMissingError = unexpected;
+
+    await expect(coordinator.refresh('manual')).rejects.toBe(unexpected);
   });
 
   it('canonicalizes every discovered workspace URI before reconciliation', async () => {
@@ -278,6 +330,21 @@ describe('DiscoveryCoordinator', () => {
     discovery.release();
     await Promise.all([first, second]);
     expect(discovery.scanned).toEqual(['file:///first', 'file:///first']);
+  });
+
+  it('does not recreate watchers when queued and in-flight refreshes complete after disposal', async () => {
+    const discovery = new BlockingDiscovery();
+    const { coordinator, settings, watchers } = createHarness(discovery);
+    settings.roots = ['file:///configured'];
+    const refresh = coordinator.refresh('activation');
+    const queuedRefresh = coordinator.refresh('watcher');
+    await Promise.resolve();
+
+    coordinator.dispose();
+    discovery.release();
+    await Promise.all([refresh, queuedRefresh]);
+
+    expect(watchers).toEqual([]);
   });
 
   it('debounces watcher bursts into one refresh', async () => {
@@ -319,6 +386,37 @@ describe('DiscoveryCoordinator', () => {
     coordinator.dispose();
 
     expect(active.every(watcher => watcher.disposed)).toBe(true);
+  });
+
+  it('keeps the complete watcher set when replacement creation fails and retries later', () => {
+    const {
+      coordinator,
+      settings,
+      watcherFailures,
+      watchers,
+    } = createHarness();
+    settings.roots = ['file:///old'];
+    coordinator.updateWatchers();
+    const oldWatcher = watchers[0];
+    if (!oldWatcher) throw new Error('Expected the old watcher');
+    settings.roots = ['file:///new', 'file:///broken'];
+    watcherFailures.add('file:///broken');
+
+    expect(() => { coordinator.updateWatchers(); }).toThrow('Cannot watch file:///broken');
+
+    const partialWatcher = watchers[1];
+    if (!partialWatcher) throw new Error('Expected a partial replacement watcher');
+    expect(oldWatcher.disposed).toBe(false);
+    expect(oldWatcher.subscriptionCount).toBe(2);
+    expect(partialWatcher.disposed).toBe(true);
+    expect(partialWatcher.subscriptionCount).toBe(0);
+
+    watcherFailures.clear();
+    coordinator.updateWatchers();
+
+    expect(oldWatcher.disposed).toBe(true);
+    expect(watchers.slice(2).map(watcher => watcher.subscriptionCount)).toEqual([2, 2]);
+    coordinator.dispose();
   });
 
   it('updates active watchers after a refresh changes the surrounding root', async () => {
