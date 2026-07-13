@@ -91,4 +91,15 @@ describe('WorkspaceTreeProvider', () => {
     expect(listener).toHaveBeenCalledOnce();
     expect(listener).toHaveBeenCalledWith(undefined);
   });
+
+  it('disposes its tree-change event emitter', () => {
+    const provider = createProvider();
+    const listener = vi.fn();
+    provider.onDidChangeTreeData(listener);
+
+    provider.dispose();
+    provider.refresh();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

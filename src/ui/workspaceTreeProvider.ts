@@ -51,6 +51,8 @@ export class WorkspaceTreeProvider {
 
   refresh(): void { this.changeEmitter.fire(); }
 
+  dispose(): void { this.changeEmitter.dispose(); }
+
   getTreeItem(element: WorkspaceTreeItem): WorkspaceTreeItem { return element; }
 
   getChildren(element?: WorkspaceTreeItem): WorkspaceTreeItem[] {

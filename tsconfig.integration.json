@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "rootDir": "src/test/integration",
+    "outDir": "out/test/integration",
+    "types": ["node", "vscode", "mocha"]
+  },
+  "include": ["src/test/integration/**/*.ts"]
+}
