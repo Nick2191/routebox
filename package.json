@@ -1,0 +1,35 @@
+{
+  "name": "workspace-atlas",
+  "displayName": "Workspace Atlas",
+  "description": "Discover, organize, and switch between .code-workspace files.",
+  "version": "0.1.0",
+  "publisher": "nick",
+  "license": "MIT",
+  "engines": { "vscode": "^1.114.0" },
+  "categories": ["Other"],
+  "keywords": ["workspace", "switcher", "code-workspace", "project manager"],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "compile": "npm run check-types && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test:unit": "vitest run",
+    "test": "npm run check-types && npm run lint && npm run test:unit",
+    "package": "npm run test && node esbuild.mjs --production",
+    "vscode:prepublish": "npm run package",
+    "vsix": "npm run package && vsce package"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "latest",
+    "@types/vscode": "^1.114.0",
+    "@vscode/vsce": "latest",
+    "esbuild": "latest",
+    "eslint": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}

@@ -1,0 +1,10 @@
+.github/**
+.vscode/**
+src/**
+node_modules/**
+out/**
+coverage/**
+docs/**
+*.config.*
+esbuild.mjs
+tsconfig*.json
