@@ -28,7 +28,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   const fs = new VscodeFileSystem();
   const current = {
-    workspaceFileUri: (): string | undefined => workspace.workspaceFile?.toString(true),
+    workspaceFileUri: (): string | undefined => workspace.workspaceFile?.toString(),
   };
   const settings = {
     configuredRoots: (): readonly string[] => workspace
@@ -45,7 +45,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
     discovery,
     reconciler,
     registry,
-    onDidRefresh: (): void => { tree.refresh(); },
+    onDidRefresh: (reason, result): void => {
+      tree.refresh();
+      const message = activationCleanupMessage(reason, result.removed);
+      if (message) void window.showInformationMessage(message);
+    },
   });
   const opener = new WorkspaceOpener(
     registry,
@@ -96,4 +100,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   refresh('activation');
 }
+
+export function activationCleanupMessage(
+  reason: RefreshReason,
+  removed: number,
+): string | undefined {
+  if (reason !== 'activation' || removed <= 0) return undefined;
+  const suffix = removed === 1 ? 'workspace' : 'workspaces';
+  return `Removed ${removed} missing ${suffix}.`;
+}
+
 export function deactivate(): void {}

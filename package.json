@@ -88,6 +88,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "workspaceAtlas.openEntryInCurrentWindow",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "workspaceAtlas.addWorkspace",

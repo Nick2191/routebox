@@ -40,10 +40,10 @@ class NodeFileSystem implements FileSystemPort {
   }
 
   joinPath(baseUri: string, ...segments: string[]): string {
-    return Utils.joinPath(URI.parse(baseUri), ...segments).toString(true);
+    return Utils.joinPath(URI.parse(baseUri), ...segments).toString();
   }
 
-  canonicalize(uri: string): string { return URI.parse(uri).toString(true); }
+  canonicalize(uri: string): string { return URI.parse(uri).toString(); }
 
   async exists(uri: string): Promise<boolean> {
     try {
@@ -55,7 +55,7 @@ class NodeFileSystem implements FileSystemPort {
     }
   }
 
-  parent(uri: string): string { return Utils.dirname(URI.parse(uri)).toString(true); }
+  parent(uri: string): string { return Utils.dirname(URI.parse(uri)).toString(); }
 }
 
 class SmokeUi implements WorkspaceUi {
@@ -100,9 +100,9 @@ describe('Stage 1 smoke semantics', () => {
     await registry.load();
     const reconciler = new WorkspaceReconciler(registry, fs);
     const discovery = new WorkspaceDiscoveryService(fs);
-    const manualUri = URI.file(manualPath).toString(true);
-    const discoveredUri = URI.file(discoveredPath).toString(true);
-    const discoveryRootUri = URI.file(discoveryDirectory).toString(true);
+    const manualUri = URI.file(manualPath).toString();
+    const discoveredUri = URI.file(discoveredPath).toString();
+    const discoveryRootUri = URI.file(discoveryDirectory).toString();
     const opened: [string, ...unknown[]][] = [];
     const opener = new WorkspaceOpener(
       registry,

@@ -1,5 +1,5 @@
 import type { DiscoveryResult, FileSystemPort } from './discovery.js';
-import type { WorkspaceEntry, WorkspaceSourceId } from './workspaceEntry.js';
+import type { WorkspaceSourceId } from './workspaceEntry.js';
 import type { WorkspaceRegistry } from './workspaceRegistry.js';
 
 export class WorkspaceReconciler {
@@ -49,10 +49,9 @@ export class WorkspaceReconciler {
       entry,
       await this.fs.exists(entry.uri),
     ] as const));
-    const retained: WorkspaceEntry[] = checks
-      .filter(([, exists]) => exists)
-      .map(([entry]) => entry);
-    await this.registry.replace(retained);
-    return { removed: current.length - retained.length };
+    const missingIds = checks
+      .filter(([, exists]) => !exists)
+      .map(([entry]) => entry.id);
+    return { removed: await this.registry.remove(missingIds) };
   }
 }

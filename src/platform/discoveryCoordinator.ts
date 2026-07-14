@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { FileSystemError, RelativePattern, Uri, workspace, type Disposable } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../domain/discovery.js';
 import type { WorkspaceEntry, WorkspaceSourceId } from '../domain/workspaceEntry.js';
@@ -32,6 +33,34 @@ interface RegistryPort {
   list(): WorkspaceEntry[];
 }
 
+export interface AutomaticRootPolicy {
+  allows(rootUri: string): boolean;
+}
+
+export class VscodeAutomaticRootPolicy implements AutomaticRootPolicy {
+  constructor(private readonly homeUri = Uri.file(homedir()).toString()) {}
+
+  allows(rootUri: string): boolean {
+    const root = Uri.parse(rootUri);
+    if (this.isFileSystemRoot(root)) return false;
+    const home = Uri.parse(this.homeUri);
+    if (root.scheme !== home.scheme || root.authority !== home.authority) return true;
+    const normalizeCase = (value: string): string => (
+      process.platform === 'win32' ? value.toLowerCase() : value
+    );
+    const rootPath = normalizeCase(root.path).replace(/\/$/, '');
+    const homePath = normalizeCase(home.path).replace(/\/$/, '');
+    return homePath !== rootPath && !homePath.startsWith(`${rootPath}/`);
+  }
+
+  private isFileSystemRoot(uri: Uri): boolean {
+    if (uri.path === '/' || /^\/[A-Za-z]:\/?$/.test(uri.path)) return true;
+    return uri.scheme === 'file'
+      && uri.authority.length > 0
+      && uri.path.split('/').filter(Boolean).length <= 1;
+  }
+}
+
 export interface WorkspaceWatcher extends Disposable {
   onDidCreate(listener: (uri: Uri) => unknown): Disposable;
   onDidDelete(listener: (uri: Uri) => unknown): Disposable;
@@ -44,6 +73,7 @@ export interface DiscoveryCoordinatorOptions {
   discovery: DiscoveryPort;
   reconciler: ReconcilerPort;
   registry: RegistryPort;
+  automaticRootPolicy?: AutomaticRootPolicy;
   onDidRefresh?: (reason: RefreshReason, result: RefreshResult) => void;
   createWatcher?: (rootUri: string) => WorkspaceWatcher;
 }
@@ -60,11 +90,16 @@ export class DiscoveryCoordinator {
   private watcherResources: Disposable[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
+  private readonly automaticRootPolicy: AutomaticRootPolicy;
 
-  constructor(private readonly options: DiscoveryCoordinatorOptions) {}
+  constructor(private readonly options: DiscoveryCoordinatorOptions) {
+    this.automaticRootPolicy = options.automaticRootPolicy ?? new VscodeAutomaticRootPolicy();
+  }
 
   refresh(reason: RefreshReason): Promise<RefreshResult> {
-    const result = this.refreshQueue.then(() => this.performRefresh());
+    const result = this.refreshQueue.then(() => (
+      this.disposed ? this.emptyResult() : this.performRefresh()
+    ));
     const completed = result.then(value => {
       if (!this.disposed) this.options.onDidRefresh?.(reason, value);
       return value;
@@ -109,6 +144,7 @@ export class DiscoveryCoordinator {
   }
 
   private async performRefresh(): Promise<RefreshResult> {
+    if (this.disposed) return this.emptyResult();
     const roots: Array<{ root: string; source: WorkspaceSourceId }> = this.options.settings
       .configuredRoots()
       .map(value => this.options.fs.canonicalize(value))
@@ -119,8 +155,10 @@ export class DiscoveryCoordinator {
       const canonicalWorkspaceFile = this.options.fs.canonicalize(workspaceFile);
       const containing = this.options.fs.parent(canonicalWorkspaceFile);
       const root = this.options.fs.parent(containing);
-      currentSource = `current:${root}`;
-      roots.push({ root, source: currentSource });
+      if (this.automaticRootPolicy.allows(root)) {
+        currentSource = `current:${root}`;
+        roots.push({ root, source: currentSource });
+      }
     }
 
     const persistedSources = this.options.registry.list().flatMap(entry => entry.discoveredFrom);
@@ -132,30 +170,41 @@ export class DiscoveryCoordinator {
     const persistedConfiguredSources = persistedSources.filter(
       (source): source is `configured:${string}` => source.startsWith('configured:'),
     );
-    for (const source of new Set([...this.previousConfiguredSources, ...persistedConfiguredSources])) {
-      if (!activeConfiguredSources.has(source)) await this.options.reconciler.retireSource(source);
-    }
-    this.previousConfiguredSources = activeConfiguredSources;
+    const configuredSourcesToRetire = [
+      ...new Set([...this.previousConfiguredSources, ...persistedConfiguredSources]),
+    ].filter(source => !activeConfiguredSources.has(source));
 
     const persistedCurrentSources = new Set(
       persistedSources
         .filter((source): source is `current:${string}` => source.startsWith('current:')),
     );
-    for (const source of persistedCurrentSources) {
-      if (source !== currentSource) await this.options.reconciler.retireSource(source);
-    }
+    const currentSourcesToRetire = [...persistedCurrentSources]
+      .filter(source => source !== currentSource);
 
     const errors: DiscoveryResult[] = [];
+    const results: Array<{ source: WorkspaceSourceId; result: DiscoveryResult }> = [];
     for (const { root, source } of roots) {
       const scanned = await this.options.discovery.scan(root);
+      if (this.disposed) return this.emptyResult();
       const result: DiscoveryResult = {
         ...scanned,
         rootUri: this.options.fs.canonicalize(scanned.rootUri),
         workspaceUris: scanned.workspaceUris.map(uri => this.options.fs.canonicalize(uri)),
       };
       if (result.status === 'error') errors.push(result);
+      results.push({ source, result });
+    }
+    if (this.disposed) return this.emptyResult();
+    for (const source of [...configuredSourcesToRetire, ...currentSourcesToRetire]) {
+      if (this.disposed) return this.emptyResult();
+      await this.options.reconciler.retireSource(source);
+    }
+    this.previousConfiguredSources = activeConfiguredSources;
+    for (const { source, result } of results) {
+      if (this.disposed) return this.emptyResult();
       await this.options.reconciler.reconcileSource(source, result);
     }
+    if (this.disposed) return this.emptyResult();
     let removed = 0;
     try {
       ({ removed } = await this.options.reconciler.removeMissing());
@@ -172,7 +221,8 @@ export class DiscoveryCoordinator {
     const workspaceFile = this.options.current.workspaceFileUri();
     if (workspaceFile) {
       const containing = this.options.fs.parent(this.options.fs.canonicalize(workspaceFile));
-      roots.push(this.options.fs.parent(containing));
+      const automaticRoot = this.options.fs.parent(containing);
+      if (this.automaticRootPolicy.allows(automaticRoot)) roots.push(automaticRoot);
     }
     return [...new Set(roots)];
   }
@@ -192,6 +242,8 @@ export class DiscoveryCoordinator {
       new RelativePattern(Uri.parse(root), '**/*.code-workspace'),
     );
   }
+
+  private emptyResult(): RefreshResult { return { removed: 0, errors: [] }; }
 
   private disposeWatchers(): void {
     this.disposeResources(this.watcherResources);

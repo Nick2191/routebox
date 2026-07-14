@@ -4,12 +4,40 @@ import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
+  failNext: Error | undefined;
+  readonly writes: WorkspaceEntry[][] = [];
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  write(entries: unknown): Promise<void> {
-    this.value = entries;
+  write(entries: readonly WorkspaceEntry[]): Promise<void> {
+    if (this.failNext) {
+      const error = this.failNext;
+      this.failNext = undefined;
+      return Promise.reject(error);
+    }
+    const copy = entries.map(entry => ({ ...entry, discoveredFrom: [...entry.discoveredFrom] }));
+    this.writes.push(copy);
+    this.value = copy;
     return Promise.resolve();
   }
+}
+
+class BlockingFirstWriteStorage extends MemoryStorage {
+  private releaseFirst!: () => void;
+  private markFirstStarted!: () => void;
+  readonly firstStarted = new Promise<void>(resolve => { this.markFirstStarted = resolve; });
+  private readonly firstReleased = new Promise<void>(resolve => { this.releaseFirst = resolve; });
+  private writeCount = 0;
+
+  override async write(entries: readonly WorkspaceEntry[]): Promise<void> {
+    this.writeCount += 1;
+    if (this.writeCount === 1) {
+      this.markFirstStarted();
+      await this.firstReleased;
+    }
+    await super.write(entries);
+  }
+
+  release(): void { this.releaseFirst(); }
 }
 
 function discoveredEntry(): WorkspaceEntry {
@@ -147,5 +175,91 @@ describe('WorkspaceRegistry', () => {
     registry = new WorkspaceRegistry(storage);
     expect(await registry.load()).toEqual({ discarded: 0, reset: true });
     expect(registry.list()).toEqual([]);
+  });
+
+  it('rolls back memory when manual registration persistence fails', async () => {
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.upsertManual('file:///work/new.code-workspace'))
+      .rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual([]);
+  });
+
+  it('rolls back memory when alias persistence fails', async () => {
+    const entry = await registry.upsertManual('file:///work/a.code-workspace');
+    const before = registry.list();
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.setAlias(entry.id, 'Alpha')).rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual(before);
+  });
+
+  it('rolls back memory when removal persistence fails', async () => {
+    const entry = await registry.upsertManual('file:///work/a.code-workspace');
+    const before = registry.list();
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.removeManual(entry.id)).rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual(before);
+  });
+
+  it('rolls back memory when replacement persistence fails', async () => {
+    await registry.upsertManual('file:///work/a.code-workspace');
+    const before = registry.list();
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.replace([{
+      id: 'file:///work/b.code-workspace',
+      uri: 'file:///work/b.code-workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///work'],
+    }])).rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual(before);
+  });
+
+  it('rolls back memory when last-opened persistence fails', async () => {
+    const entry = await registry.upsertManual('file:///work/a.code-workspace');
+    const before = registry.list();
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.markOpened(entry.id, 123)).rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual(before);
+  });
+
+  it('serializes concurrent successful mutations in call order without losing either', async () => {
+    const blockingStorage = new BlockingFirstWriteStorage();
+    registry = new WorkspaceRegistry(blockingStorage);
+    await registry.load();
+
+    const first = registry.upsertManual('file:///work/a.code-workspace');
+    await blockingStorage.firstStarted;
+    const second = registry.upsertManual('file:///work/b.code-workspace');
+    blockingStorage.release();
+    await Promise.all([first, second]);
+
+    expect(blockingStorage.writes.map(write => write.map(entry => entry.id))).toEqual([
+      ['file:///work/a.code-workspace'],
+      ['file:///work/a.code-workspace', 'file:///work/b.code-workspace'],
+    ]);
+    expect(registry.list().map(entry => entry.id)).toEqual([
+      'file:///work/a.code-workspace',
+      'file:///work/b.code-workspace',
+    ]);
+  });
+
+  it('continues with a successful mutation after a failed mutation', async () => {
+    storage.failNext = new Error('write failed');
+    const failed = registry.upsertManual('file:///work/a.code-workspace');
+    const successful = registry.upsertManual('file:///work/b.code-workspace');
+
+    await expect(failed).rejects.toThrow('write failed');
+    await expect(successful).resolves.toMatchObject({ id: 'file:///work/b.code-workspace' });
+
+    expect(registry.list().map(entry => entry.id)).toEqual(['file:///work/b.code-workspace']);
   });
 });

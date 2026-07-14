@@ -73,6 +73,23 @@ describe('WorkspaceDiscoveryService', () => {
     });
   });
 
+  it('skips excluded directories regardless of name casing', async () => {
+    const fs = new FakeFileSystem();
+    fs.directory('file:///root', [
+      ['.GIT', 'directory'],
+      ['Node_Modules', 'directory'],
+      ['visible.code-workspace', 'file'],
+    ]);
+    fs.directory('file:///root/.GIT', [['hidden.code-workspace', 'file']]);
+    fs.directory('file:///root/Node_Modules', [['also-hidden.code-workspace', 'file']]);
+
+    await expect(new WorkspaceDiscoveryService(fs).scan('file:///root')).resolves.toEqual({
+      rootUri: 'file:///root',
+      workspaceUris: ['file:///root/visible.code-workspace'],
+      status: 'ok',
+    });
+  });
+
   it('deduplicates workspace files returned more than once', async () => {
     const fs = new FakeFileSystem();
     fs.directory('file:///root', [

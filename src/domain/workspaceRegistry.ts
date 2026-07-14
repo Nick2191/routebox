@@ -24,6 +24,7 @@ function copyEntry(entry: WorkspaceEntry): WorkspaceEntry {
 
 export class WorkspaceRegistry {
   private entries = new Map<string, WorkspaceEntry>();
+  private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly storage: RegistryStorage) {}
 
@@ -47,47 +48,76 @@ export class WorkspaceRegistry {
 
   async upsertManual(uri: string): Promise<WorkspaceEntry> {
     if (!isWorkspaceFileUri(uri)) throw new Error('Select a .code-workspace file.');
-    const existing = this.entries.get(uri);
-    const entry: WorkspaceEntry = existing
-      ? { ...existing, manuallyRegistered: true }
-      : { id: uri, uri, manuallyRegistered: true, discoveredFrom: [] };
-    this.entries.set(entry.id, entry);
-    await this.persist();
-    return copyEntry(entry);
+    return this.mutate(candidate => {
+      const existing = candidate.get(uri);
+      const entry: WorkspaceEntry = existing
+        ? { ...existing, manuallyRegistered: true }
+        : { id: uri, uri, manuallyRegistered: true, discoveredFrom: [] };
+      candidate.set(entry.id, entry);
+      return copyEntry(entry);
+    });
   }
 
   async setAlias(id: string, alias: string): Promise<void> {
-    const entry = this.require(id);
-    const clean = alias.trim();
-    this.entries.set(id, { ...entry, alias: clean || undefined });
-    await this.persist();
+    await this.mutate(candidate => {
+      const entry = this.require(candidate, id);
+      const clean = alias.trim();
+      candidate.set(id, { ...entry, alias: clean || undefined });
+    });
   }
 
   async resetAlias(id: string): Promise<void> { await this.setAlias(id, ''); }
 
   async removeManual(id: string): Promise<void> {
-    const entry = this.require(id);
-    if (entry.discoveredFrom.length === 0) this.entries.delete(id);
-    else this.entries.set(id, { ...entry, manuallyRegistered: false });
-    await this.persist();
+    await this.mutate(candidate => {
+      const entry = this.require(candidate, id);
+      if (entry.discoveredFrom.length === 0) candidate.delete(id);
+      else candidate.set(id, { ...entry, manuallyRegistered: false });
+    });
   }
 
   async replace(entries: readonly WorkspaceEntry[]): Promise<void> {
-    this.entries = new Map(entries.map(entry => [entry.id, copyEntry(entry)]));
-    await this.persist();
+    const replacements = entries.map(copyEntry);
+    await this.mutate(candidate => {
+      candidate.clear();
+      for (const entry of replacements) candidate.set(entry.id, copyEntry(entry));
+    });
+  }
+
+  async remove(ids: readonly string[]): Promise<number> {
+    return this.mutate(candidate => {
+      let removed = 0;
+      for (const id of ids) {
+        if (candidate.delete(id)) removed += 1;
+      }
+      return removed;
+    });
   }
 
   async markOpened(id: string, at: number): Promise<void> {
-    const entry = this.require(id);
-    this.entries.set(id, { ...entry, lastOpenedAt: at });
-    await this.persist();
+    await this.mutate(candidate => {
+      const entry = this.require(candidate, id);
+      candidate.set(id, { ...entry, lastOpenedAt: at });
+    });
   }
 
-  private require(id: string): WorkspaceEntry {
-    const entry = this.entries.get(id);
+  private require(entries: ReadonlyMap<string, WorkspaceEntry>, id: string): WorkspaceEntry {
+    const entry = entries.get(id);
     if (!entry) throw new Error('Workspace is no longer registered.');
     return entry;
   }
 
-  private async persist(): Promise<void> { await this.storage.write(this.list()); }
+  private mutate<T>(change: (candidate: Map<string, WorkspaceEntry>) => T): Promise<T> {
+    const operation = this.mutationQueue.then(async () => {
+      const candidate = new Map(
+        [...this.entries].map(([id, entry]) => [id, copyEntry(entry)]),
+      );
+      const result = change(candidate);
+      await this.storage.write([...candidate.values()].map(copyEntry));
+      this.entries = candidate;
+      return result;
+    });
+    this.mutationQueue = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
 }

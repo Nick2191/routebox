@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { FileSystemError, FileType } from 'vscode';
+import { FileSystemError, FileType, Uri } from 'vscode';
 import { VscodeFileSystem } from '../../platform/vscodeFileSystem.js';
 import { VscodeRegistryStorage } from '../../platform/vscodeRegistryStorage.js';
 import { setWorkspaceFileSystem } from '../adapters/vscode.js';
@@ -37,7 +37,20 @@ describe('VscodeFileSystem', () => {
     const fs = new VscodeFileSystem();
 
     expect(fs.canonicalize('file:///C:/My%20Work/one/../project.code-workspace'))
-      .toBe('file:///c:/My Work/project.code-workspace');
+      .toBe('file:///c%3A/My%20Work/project.code-workspace');
+  });
+
+  it.each([
+    ['file:///work/My%20Workspace.code-workspace', 'file:///work/My%20Workspace.code-workspace'],
+    ['file:///work/literal%2520.code-workspace', 'file:///work/literal%2520.code-workspace'],
+    ['file:///work/literal%252F.code-workspace', 'file:///work/literal%252F.code-workspace'],
+  ])('round-trips encoded URI identity for %s', (value, expected) => {
+    const fs = new VscodeFileSystem();
+
+    const canonical = fs.canonicalize(value);
+
+    expect(canonical).toBe(expected);
+    expect(Uri.parse(canonical).path).toBe(Uri.parse(value).path);
   });
 
   it('canonicalizes Windows UNC paths without losing the authority or share', () => {
@@ -45,21 +58,28 @@ describe('VscodeFileSystem', () => {
 
     expect(fs.canonicalize(
       'file://fileserver/Team%20Share/projects/../workspace.code-workspace',
-    )).toBe('file://fileserver/Team Share/workspace.code-workspace');
+    )).toBe('file://fileserver/Team%20Share/workspace.code-workspace');
   });
 
   it('computes a URI parent while preserving scheme and authority', () => {
     const fs = new VscodeFileSystem();
 
     expect(fs.parent('vscode-remote://ssh-remote+dev/home/nick/project/work.code-workspace'))
-      .toBe('vscode-remote://ssh-remote+dev/home/nick/project');
+      .toBe('vscode-remote://ssh-remote%2Bdev/home/nick/project');
   });
 
-  it('joins URI paths without encoding display spaces', () => {
+  it('joins URI paths with encoded durable spaces', () => {
     const fs = new VscodeFileSystem();
 
     expect(fs.joinPath('file:///Users/nick/My Work', 'nested', 'a.code-workspace'))
-      .toBe('file:///Users/nick/My Work/nested/a.code-workspace');
+      .toBe('file:///Users/nick/My%20Work/nested/a.code-workspace');
+  });
+
+  it('computes encoded parents without turning a literal %2F filename into a slash', () => {
+    const fs = new VscodeFileSystem();
+
+    expect(fs.parent('file:///work/literal%252F/a.code-workspace'))
+      .toBe('file:///work/literal%252F');
   });
 
   it('maps VS Code directory entries to domain file kinds', async () => {

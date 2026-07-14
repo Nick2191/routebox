@@ -191,18 +191,41 @@ interface OpenDialogOptions {
   filters?: Record<string, string[]>;
 }
 
-interface QuickPickOptions { placeHolder?: string }
+interface QuickPickOptions {
+  placeHolder?: string;
+  matchOnDescription?: boolean;
+  matchOnDetail?: boolean;
+}
 interface InputBoxOptions { prompt?: string; value?: string }
+
+let openDialog = (options: OpenDialogOptions): Promise<URI[] | undefined> => {
+  void options;
+  return Promise.resolve(undefined);
+};
+let quickPick = <T>(items: readonly T[], options?: QuickPickOptions): Promise<T | undefined> => {
+  void items;
+  void options;
+  return Promise.resolve(undefined);
+};
+
+export function setOpenDialog(
+  value: (options: OpenDialogOptions) => Promise<URI[] | undefined>,
+): void {
+  openDialog = value;
+}
+
+export function setQuickPick(
+  value: <T>(items: readonly T[], options?: QuickPickOptions) => Promise<T | undefined>,
+): void {
+  quickPick = value;
+}
 
 export const window = {
   showOpenDialog(options: OpenDialogOptions): Promise<URI[] | undefined> {
-    void options;
-    return Promise.resolve(undefined);
+    return openDialog(options);
   },
   showQuickPick<T>(items: readonly T[], options?: QuickPickOptions): Promise<T | undefined> {
-    void items;
-    void options;
-    return Promise.resolve(undefined);
+    return quickPick(items, options);
   },
   showInputBox(options?: InputBoxOptions): Promise<string | undefined> {
     void options;

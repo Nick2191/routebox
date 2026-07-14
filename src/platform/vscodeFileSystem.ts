@@ -6,7 +6,7 @@ export class VscodeFileSystem implements FileSystemPort {
   canonicalize(value: string): string {
     const uri = Uri.parse(value);
     const normalized = posix.normalize(uri.path).replace(/^\/[A-Z]:/, drive => drive.toLowerCase());
-    return uri.with({ path: normalized }).toString(true);
+    return uri.with({ path: normalized }).toString();
   }
 
   async readDirectory(value: string): Promise<readonly [name: string, kind: FileKind][]> {
@@ -15,7 +15,7 @@ export class VscodeFileSystem implements FileSystemPort {
   }
 
   joinPath(baseUri: string, ...segments: string[]): string {
-    return Uri.joinPath(Uri.parse(baseUri), ...segments).toString(true);
+    return Uri.joinPath(Uri.parse(baseUri), ...segments).toString();
   }
   async exists(value: string): Promise<boolean> {
     try {
@@ -28,7 +28,7 @@ export class VscodeFileSystem implements FileSystemPort {
   }
   parent(value: string): string {
     const uri = Uri.parse(value);
-    return uri.with({ path: posix.dirname(uri.path) }).toString(true);
+    return uri.with({ path: posix.dirname(uri.path) }).toString();
   }
 
   private fileKind(type: FileType): FileKind {

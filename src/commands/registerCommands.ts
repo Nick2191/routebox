@@ -115,7 +115,7 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
       canSelectMany: true,
       filters: { 'VS Code Workspaces': ['code-workspace'] },
     });
-    return selected?.map(uri => uri.toString(true)) ?? [];
+    return selected?.map(uri => uri.toString()) ?? [];
   }
 
   async pickDiscoveryRoot(): Promise<string | undefined> {
@@ -124,7 +124,7 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
       canSelectFolders: true,
       canSelectMany: false,
     });
-    return selected?.[0]?.toString(true);
+    return selected?.[0]?.toString();
   }
 
   async pickDiscoveryRootToRemove(roots: readonly string[]): Promise<string | undefined> {
@@ -141,7 +141,11 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
   ): Promise<WorkspaceEntry | undefined> {
     const selected = await window.showQuickPick(
       buildWorkspaceQuickPickItems(entries, currentUri),
-      { placeHolder: 'Select a workspace' },
+      {
+        placeHolder: 'Select a workspace',
+        matchOnDescription: true,
+        matchOnDetail: true,
+      },
     );
     return selected?.entry;
   }

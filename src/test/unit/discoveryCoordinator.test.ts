@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { dirname } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileSystemError, Uri } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../../domain/discovery.js';
@@ -24,7 +26,10 @@ class FakeFileSystem implements FileSystemPort {
   }
   canonicalize(uri: string): string { return this.canonical.get(uri) ?? uri; }
   exists(): Promise<boolean> { return Promise.resolve(true); }
-  parent(uri: string): string { return uri.slice(0, uri.lastIndexOf('/')); }
+  parent(uri: string): string {
+    const slash = uri.lastIndexOf('/');
+    return slash <= 'file://'.length ? 'file:///' : uri.slice(0, slash);
+  }
 }
 
 class FakeDiscovery {
@@ -215,6 +220,54 @@ describe('DiscoveryCoordinator', () => {
     expect(discovery.scanned).toEqual(['file:///configured', 'file:///worktrees']);
   });
 
+  it('does not automatically scan when the surrounding root equals home', async () => {
+    const { coordinator, current, discovery } = createHarness();
+    const home = Uri.file(homedir()).toString();
+    current.workspaceFile = `${home}/project/project.code-workspace`;
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual([]);
+  });
+
+  it('does not automatically scan an ancestor of home', async () => {
+    const { coordinator, current, discovery } = createHarness();
+    const homeAncestor = Uri.file(dirname(homedir())).toString();
+    current.workspaceFile = `${homeAncestor}/project/project.code-workspace`;
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual([]);
+  });
+
+  it('does not automatically scan a filesystem root', async () => {
+    const { coordinator, current, discovery } = createHarness();
+    current.workspaceFile = 'file:///project/project.code-workspace';
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual([]);
+  });
+
+  it('automatically scans a safe worktree parent', async () => {
+    const { coordinator, current, discovery } = createHarness();
+    current.workspaceFile = 'file:///tmp/worktrees/BOIS-1/project.code-workspace';
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual(['file:///tmp/worktrees']);
+  });
+
+  it('allows explicitly configured home and filesystem roots', async () => {
+    const { coordinator, discovery, settings } = createHarness();
+    const home = Uri.file(homedir()).toString();
+    settings.roots = [home, 'file:///'];
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual([home, 'file:///']);
+  });
+
   it('retires the previous transient current source after a workspace change', async () => {
     const { coordinator, current, reconciler } = createHarness();
     current.workspaceFile = 'file:///old/A/a.code-workspace';
@@ -339,7 +392,11 @@ describe('DiscoveryCoordinator', () => {
   it('does not recreate watchers when queued and in-flight refreshes complete after disposal', async () => {
     const discovery = new BlockingDiscovery();
     const treeChange = vi.fn();
-    const { coordinator, settings, watchers } = createHarness(discovery, false, treeChange);
+    const { coordinator, reconciler, settings, watchers } = createHarness(
+      discovery,
+      false,
+      treeChange,
+    );
     settings.roots = ['file:///configured'];
     const refresh = coordinator.refresh('activation');
     const queuedRefresh = coordinator.refresh('watcher');
@@ -349,6 +406,10 @@ describe('DiscoveryCoordinator', () => {
     discovery.release();
     await Promise.all([refresh, queuedRefresh]);
 
+    expect(discovery.scanned).toEqual(['file:///configured']);
+    expect(reconciler.reconciled).toEqual([]);
+    expect(reconciler.retired).toEqual([]);
+    expect(reconciler.removeMissingCount).toBe(0);
     expect(watchers).toEqual([]);
     expect(treeChange).not.toHaveBeenCalled();
   });
@@ -496,7 +557,7 @@ describe('DiscoveryCoordinator', () => {
     coordinator.updateWatchers();
 
     expect(patterns).toHaveLength(1);
-    expect(patterns[0]?.baseUri.toString(true)).toBe('file:///configured');
+    expect(patterns[0]?.baseUri.toString()).toBe('file:///configured');
     expect(patterns[0]?.pattern).toBe('**/*.code-workspace');
     coordinator.dispose();
   });

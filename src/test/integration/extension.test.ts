@@ -51,6 +51,9 @@ suite('Workspace Atlas extension', () => {
         { command: 'workspaceAtlas.openEntryInCurrentWindow', title: 'Open Workspace' },
       ],
       menus: {
+        commandPalette: [
+          { command: 'workspaceAtlas.openEntryInCurrentWindow', when: 'false' },
+        ],
         'view/title': [
           { command: 'workspaceAtlas.addWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
           { command: 'workspaceAtlas.refreshWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@2' },

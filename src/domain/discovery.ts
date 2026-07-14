@@ -40,7 +40,9 @@ export class WorkspaceDiscoveryService {
   private async walk(uri: string, found: Set<string>): Promise<void> {
     for (const [name, kind] of await this.fs.readDirectory(uri)) {
       const child = this.fs.joinPath(uri, name);
-      if (kind === 'directory' && !this.excluded.has(name)) await this.walk(child, found);
+      if (kind === 'directory' && !this.excluded.has(name.toLowerCase())) {
+        await this.walk(child, found);
+      }
       if (kind === 'file' && isWorkspaceFileUri(child)) found.add(child);
     }
   }

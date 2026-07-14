@@ -1,7 +1,9 @@
 import { Uri } from 'vscode';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { VscodeWorkspaceUi } from '../../commands/registerCommands.js';
 import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
 import { buildWorkspaceQuickPickItems } from '../../ui/workspaceQuickPick.js';
+import { setOpenDialog, setQuickPick } from '../adapters/vscode.js';
 
 function workspaceEntry(uri: string, alias?: string): WorkspaceEntry {
   return {
@@ -14,6 +16,11 @@ function workspaceEntry(uri: string, alias?: string): WorkspaceEntry {
 }
 
 describe('buildWorkspaceQuickPickItems', () => {
+  afterEach(() => {
+    setOpenDialog(() => Promise.resolve(undefined));
+    setQuickPick(() => Promise.resolve(undefined));
+  });
+
   it('includes searchable alias, filename, native path, current indicator, and entry', () => {
     const entry = workspaceEntry('file:///work/a.code-workspace', 'Alpha');
 
@@ -52,5 +59,38 @@ describe('buildWorkspaceQuickPickItems', () => {
 
     expect(buildWorkspaceQuickPickItems([zulu, aliased, alpha], zulu.uri).map(item => item.entry))
       .toEqual([zulu, alpha, aliased]);
+  });
+
+  it('enables filename and native-path matching in the workspace Quick Pick', async () => {
+    const options: unknown[] = [];
+    setQuickPick((_items, value) => {
+      options.push(value);
+      return Promise.resolve(undefined);
+    });
+
+    await new VscodeWorkspaceUi().pickWorkspace([workspaceEntry('file:///work/a.code-workspace')]);
+
+    expect(options).toEqual([{
+      placeHolder: 'Select a workspace',
+      matchOnDescription: true,
+      matchOnDetail: true,
+    }]);
+  });
+
+  it.each([
+    ['/work/My Workspace.code-workspace', 'file:///work/My%20Workspace.code-workspace'],
+    ['/work/literal%20.code-workspace', 'file:///work/literal%2520.code-workspace'],
+    ['/work/literal%2F.code-workspace', 'file:///work/literal%252F.code-workspace'],
+  ])('encodes durable workspace selections for %s', async (path, expected) => {
+    setOpenDialog(() => Promise.resolve([Uri.file(path)]));
+
+    await expect(new VscodeWorkspaceUi().pickWorkspaceFiles()).resolves.toEqual([expected]);
+  });
+
+  it('encodes durable discovery-root selections', async () => {
+    setOpenDialog(() => Promise.resolve([Uri.file('/work/My Roots')]));
+
+    await expect(new VscodeWorkspaceUi().pickDiscoveryRoot())
+      .resolves.toBe('file:///work/My%20Roots');
   });
 });

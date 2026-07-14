@@ -32,6 +32,25 @@ class FakeFileSystem implements FileSystemPort {
   parent(uri: string): string { return uri.slice(0, uri.lastIndexOf('/')); }
 }
 
+class BlockingFileSystem extends FakeFileSystem {
+  private markStarted!: () => void;
+  private releaseChecks!: () => void;
+  readonly started = new Promise<void>(resolve => { this.markStarted = resolve; });
+  private readonly released = new Promise<void>(resolve => { this.releaseChecks = resolve; });
+  private hasStarted = false;
+
+  override async exists(uri: string): Promise<boolean> {
+    if (!this.hasStarted) {
+      this.hasStarted = true;
+      this.markStarted();
+    }
+    await this.released;
+    return super.exists(uri);
+  }
+
+  release(): void { this.releaseChecks(); }
+}
+
 describe('WorkspaceReconciler', () => {
   let fs: FakeFileSystem;
   let registry: WorkspaceRegistry;
@@ -202,5 +221,33 @@ describe('WorkspaceReconciler', () => {
       manuallyRegistered: false,
       discoveredFrom: ['configured:file:///root'],
     }]);
+  });
+
+  it('applies confirmed deletions to fresh registry state after pending stats', async () => {
+    const blockingFs = new BlockingFileSystem();
+    reconciler = new WorkspaceReconciler(registry, blockingFs);
+    const missing = await registry.upsertManual('file:///root/missing.code-workspace');
+    const retained = await registry.upsertManual('file:///root/retained.code-workspace');
+    blockingFs.setExists(missing.uri, false);
+    blockingFs.setExists(retained.uri, true);
+    const cleanup = reconciler.removeMissing();
+    await blockingFs.started;
+
+    const added = await registry.upsertManual('file:///root/added.code-workspace');
+    await registry.setAlias(retained.id, 'Retained Alias');
+    await reconciler.reconcileSource('current:file:///root/project', {
+      rootUri: 'file:///root/project',
+      workspaceUris: [retained.uri],
+      status: 'ok',
+    });
+    blockingFs.release();
+
+    await expect(cleanup).resolves.toEqual({ removed: 1 });
+    expect(registry.get(missing.id)).toBeUndefined();
+    expect(registry.get(retained.id)).toMatchObject({
+      alias: 'Retained Alias',
+      discoveredFrom: ['current:file:///root/project'],
+    });
+    expect(registry.get(added.id)).toEqual(added);
   });
 });
