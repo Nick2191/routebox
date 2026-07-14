@@ -24,7 +24,7 @@ export class WorkspaceOpener {
     if (!entry) throw new Error('Workspace is no longer registered.');
 
     if (!await this.fs.exists(entry.uri)) {
-      await this.registry.replace(this.registry.list().filter(candidate => candidate.id !== id));
+      await this.registry.remove([id]);
       return { status: 'missing' };
     }
 

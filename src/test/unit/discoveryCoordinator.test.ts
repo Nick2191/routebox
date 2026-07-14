@@ -220,6 +220,28 @@ describe('DiscoveryCoordinator', () => {
     expect(discovery.scanned).toEqual(['file:///configured', 'file:///worktrees']);
   });
 
+  it('canonicalizes and deduplicates configured roots for scanning, sources, and removal', async () => {
+    const { coordinator, discovery, fs, reconciler, settings, watchedRoots } = createHarness();
+    const driveCase = 'file:///C:/Work%20Trees';
+    const encodedDrive = 'file:///c%3A/Work Trees';
+    const canonical = 'file:///c%3A/Work%20Trees';
+    fs.canonical.set(driveCase, canonical);
+    fs.canonical.set(encodedDrive, canonical);
+    settings.roots = [driveCase, encodedDrive];
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual([canonical]);
+    expect(reconciler.reconciled.map(({ source }) => source))
+      .toEqual([`configured:${canonical}`]);
+    expect(watchedRoots).toEqual([canonical]);
+
+    settings.roots = [];
+    await coordinator.refresh('settings-change');
+
+    expect(reconciler.retired).toEqual([`configured:${canonical}`]);
+  });
+
   it('does not automatically scan when the surrounding root equals home', async () => {
     const { coordinator, current, discovery } = createHarness();
     const home = Uri.file(homedir()).toString();

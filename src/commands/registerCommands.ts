@@ -221,15 +221,21 @@ export function registerWorkspaceCommands(
     const selected = await ui.pickDiscoveryRoot();
     if (!selected) return;
     const canonical = dependencies.fs.canonicalize(selected);
-    await roots.update([...new Set([...roots.configuredRoots(), canonical])]);
+    const configured = roots.configuredRoots()
+      .map(root => dependencies.fs.canonicalize(root));
+    await roots.update([...new Set([...configured, canonical])]);
     await refreshAfterSettingsChange();
   };
 
   const removeDiscoveryRoot = async (): Promise<void> => {
-    const configured = roots.configuredRoots();
-    const selected = await ui.pickDiscoveryRootToRemove(configured);
+    const existing = roots.configuredRoots();
+    const selected = await ui.pickDiscoveryRootToRemove(existing);
     if (!selected) return;
-    await roots.update(configured.filter(root => root !== selected));
+    const canonicalSelected = dependencies.fs.canonicalize(selected);
+    const configured = [...new Set(
+      existing.map(root => dependencies.fs.canonicalize(root)),
+    )];
+    await roots.update(configured.filter(root => root !== canonicalSelected));
     await refreshAfterSettingsChange();
   };
 

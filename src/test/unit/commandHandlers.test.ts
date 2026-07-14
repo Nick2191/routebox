@@ -54,6 +54,7 @@ function createHarness(): {
   };
   coordinator: { refresh: ReturnType<typeof vi.fn> };
   opener: { open: ReturnType<typeof vi.fn> };
+  fs: { canonical: Map<string, string>; canonicalize(value: string): string };
   roots: { values: string[]; update: ReturnType<typeof vi.fn> };
   tree: { refresh: ReturnType<typeof vi.fn> };
 } {
@@ -74,6 +75,12 @@ function createHarness(): {
     refresh: vi.fn(() => Promise.resolve({ removed: 0, errors: [] })),
   };
   const opener = { open: vi.fn(() => Promise.resolve({ status: 'opened' as const })) };
+  const fs = {
+    canonical: new Map<string, string>(),
+    canonicalize(value: string): string {
+      return this.canonical.get(value) ?? value.replace('raw:', '');
+    },
+  };
   const roots = {
     values: [] as string[],
     configuredRoots(): readonly string[] { return this.values; },
@@ -89,7 +96,7 @@ function createHarness(): {
     opener,
     roots,
     tree,
-    fs: { canonicalize: value => value.replace('raw:', '') },
+    fs,
     current: { workspaceFileUri: () => alpha.uri },
     ui,
     commands: {
@@ -108,6 +115,7 @@ function createHarness(): {
     registry,
     coordinator,
     opener,
+    fs,
     roots,
     tree,
   };
@@ -225,6 +233,37 @@ describe('workspace command handlers', () => {
     expect(ui.warnings).toEqual([]);
     expect(ui.infos).toEqual([]);
     expect(tree.refresh.mock.calls).toHaveLength(1);
+  });
+
+  it('canonicalizes existing roots before deduplicating a Windows drive variant', async () => {
+    const { run, fs, roots, ui } = createHarness();
+    const existing = 'file:///C:/Work%20Trees';
+    const selected = 'file:///c%3A/Work Trees';
+    const canonical = 'file:///c%3A/Work%20Trees';
+    roots.values = [existing];
+    ui.discoveryRoot = selected;
+    fs.canonical.set(existing, canonical);
+    fs.canonical.set(selected, canonical);
+
+    await run(commandIds.addDiscoveryRoot);
+
+    expect(roots.update.mock.calls).toEqual([[[canonical]]]);
+  });
+
+  it('canonicalizes and deduplicates existing roots before complete removal', async () => {
+    const { run, fs, roots, ui, coordinator } = createHarness();
+    const driveCase = 'file:///C:/Work%20Trees';
+    const encodedDrive = 'file:///c%3A/Work Trees';
+    const canonical = 'file:///c%3A/Work%20Trees';
+    roots.values = [driveCase, encodedDrive];
+    ui.rootToRemove = driveCase;
+    fs.canonical.set(driveCase, canonical);
+    fs.canonical.set(encodedDrive, canonical);
+
+    await run(commandIds.removeDiscoveryRoot);
+
+    expect(roots.update.mock.calls).toEqual([[[]]]);
+    expect(coordinator.refresh.mock.calls).toEqual([['settings-change']]);
   });
 
   it('reports opening failures at the command boundary without refreshing', async () => {

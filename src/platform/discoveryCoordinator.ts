@@ -145,9 +145,7 @@ export class DiscoveryCoordinator {
 
   private async performRefresh(): Promise<RefreshResult> {
     if (this.disposed) return this.emptyResult();
-    const roots: Array<{ root: string; source: WorkspaceSourceId }> = this.options.settings
-      .configuredRoots()
-      .map(value => this.options.fs.canonicalize(value))
+    const roots: Array<{ root: string; source: WorkspaceSourceId }> = this.configuredRoots()
       .map(root => ({ root, source: `configured:${root}` }));
     const workspaceFile = this.options.current.workspaceFileUri();
     let currentSource: WorkspaceSourceId | undefined;
@@ -216,8 +214,7 @@ export class DiscoveryCoordinator {
   }
 
   private activeRoots(): string[] {
-    const roots = this.options.settings.configuredRoots()
-      .map(root => this.options.fs.canonicalize(root));
+    const roots = this.configuredRoots();
     const workspaceFile = this.options.current.workspaceFileUri();
     if (workspaceFile) {
       const containing = this.options.fs.parent(this.options.fs.canonicalize(workspaceFile));
@@ -225,6 +222,13 @@ export class DiscoveryCoordinator {
       if (this.automaticRootPolicy.allows(automaticRoot)) roots.push(automaticRoot);
     }
     return [...new Set(roots)];
+  }
+
+  private configuredRoots(): string[] {
+    return [...new Set(
+      this.options.settings.configuredRoots()
+        .map(root => this.options.fs.canonicalize(root)),
+    )];
   }
 
   private scheduleWatcherRefresh(): void {

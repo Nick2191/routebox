@@ -9,11 +9,29 @@ import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
+  private blocker: {
+    started: () => void;
+    released: Promise<void>;
+  } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  write(entries: readonly WorkspaceEntry[]): Promise<void> {
+  async write(entries: readonly WorkspaceEntry[]): Promise<void> {
+    if (this.blocker) {
+      const blocker = this.blocker;
+      this.blocker = undefined;
+      blocker.started();
+      await blocker.released;
+    }
     this.value = entries;
-    return Promise.resolve();
+  }
+
+  blockNextWrite(): { started: Promise<void>; release(): void } {
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    const released = new Promise<void>(resolve => { release = resolve; });
+    this.blocker = { started: markStarted, released };
+    return { started, release };
   }
 }
 
@@ -53,12 +71,14 @@ class BlockingFileSystem extends FakeFileSystem {
 
 describe('WorkspaceReconciler', () => {
   let fs: FakeFileSystem;
+  let storage: MemoryStorage;
   let registry: WorkspaceRegistry;
   let reconciler: WorkspaceReconciler;
 
   beforeEach(async () => {
     fs = new FakeFileSystem();
-    registry = new WorkspaceRegistry(new MemoryStorage());
+    storage = new MemoryStorage();
+    registry = new WorkspaceRegistry(storage);
     await registry.load();
     reconciler = new WorkspaceReconciler(registry, fs);
   });
@@ -249,5 +269,53 @@ describe('WorkspaceReconciler', () => {
       discoveredFrom: ['current:file:///root/project'],
     });
     expect(registry.get(added.id)).toEqual(added);
+  });
+
+  it('reconciles a source against metadata committed by an earlier queued mutation', async () => {
+    const uri = 'file:///root/a.code-workspace';
+    await reconciler.reconcileSource('configured:file:///root', {
+      rootUri: 'file:///root',
+      workspaceUris: [uri],
+      status: 'ok',
+    });
+    const blocked = storage.blockNextWrite();
+    const alias = registry.setAlias(uri, 'Concurrent Alias');
+    await blocked.started;
+
+    const reconciliation = reconciler.reconcileSource('current:file:///root/project', {
+      rootUri: 'file:///root/project',
+      workspaceUris: [uri],
+      status: 'ok',
+    });
+    blocked.release();
+    await Promise.all([alias, reconciliation]);
+
+    expect(registry.get(uri)).toMatchObject({
+      alias: 'Concurrent Alias',
+      discoveredFrom: ['configured:file:///root', 'current:file:///root/project'],
+    });
+  });
+
+  it('retires a source against manual registration committed by an earlier queued mutation', async () => {
+    const uri = 'file:///root/a.code-workspace';
+    await reconciler.reconcileSource('configured:file:///root', {
+      rootUri: 'file:///root',
+      workspaceUris: [uri],
+      status: 'ok',
+    });
+    const blocked = storage.blockNextWrite();
+    const manualRegistration = registry.upsertManual(uri);
+    await blocked.started;
+
+    const retirement = reconciler.retireSource('configured:file:///root');
+    blocked.release();
+    await Promise.all([manualRegistration, retirement]);
+
+    expect(registry.get(uri)).toEqual({
+      id: uri,
+      uri,
+      manuallyRegistered: true,
+      discoveredFrom: [],
+    });
   });
 });

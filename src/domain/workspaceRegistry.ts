@@ -84,6 +84,10 @@ export class WorkspaceRegistry {
     });
   }
 
+  async updateEntries(update: (entries: Map<string, WorkspaceEntry>) => void): Promise<void> {
+    await this.mutate(candidate => { update(candidate); });
+  }
+
   async remove(ids: readonly string[]): Promise<number> {
     return this.mutate(candidate => {
       let removed = 0;

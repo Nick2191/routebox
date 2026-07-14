@@ -14,11 +14,25 @@ import {
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
+  private blocker: { started(): void; released: Promise<void> } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  write(entries: readonly WorkspaceEntry[]): Promise<void> {
+  async write(entries: readonly WorkspaceEntry[]): Promise<void> {
+    if (this.blocker) {
+      const blocker = this.blocker;
+      this.blocker = undefined;
+      blocker.started();
+      await blocker.released;
+    }
     this.value = entries;
-    return Promise.resolve();
+  }
+  blockNextWrite(): { started: Promise<void>; release(): void } {
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    const released = new Promise<void>(resolve => { release = resolve; });
+    this.blocker = { started: markStarted, released };
+    return { started, release };
   }
 }
 
@@ -55,6 +69,7 @@ class FakeClock implements Clock {
 describe('WorkspaceOpener', () => {
   let fs: FakeFileSystem;
   let commands: FakeCommands;
+  let storage: MemoryStorage;
   let registry: WorkspaceRegistry;
   let opener: WorkspaceOpener;
   let entry: WorkspaceEntry;
@@ -62,7 +77,8 @@ describe('WorkspaceOpener', () => {
   beforeEach(async () => {
     fs = new FakeFileSystem();
     commands = new FakeCommands();
-    registry = new WorkspaceRegistry(new MemoryStorage());
+    storage = new MemoryStorage();
+    registry = new WorkspaceRegistry(storage);
     await registry.load();
     entry = await registry.upsertManual('file:///work/a.code-workspace');
     opener = new WorkspaceOpener(registry, fs, commands, new FakeClock(123));
@@ -96,6 +112,24 @@ describe('WorkspaceOpener', () => {
     expect(registry.get(entry.id)).toBeUndefined();
     expect(registry.list()).toEqual([retained]);
     expect(commands.calls).toEqual([]);
+  });
+
+  it('targeted missing cleanup preserves unrelated metadata committed first', async () => {
+    const retained = await registry.upsertManual('file:///work/retained.code-workspace');
+    fs.setExists(entry.uri, false);
+    const blocked = storage.blockNextWrite();
+    const alias = registry.setAlias(retained.id, 'Fresh Alias');
+    await blocked.started;
+
+    const opening = opener.open(entry.id, 'reuse');
+    blocked.release();
+    await Promise.all([alias, opening]);
+
+    expect(registry.get(entry.id)).toBeUndefined();
+    expect(registry.get(retained.id)).toEqual({
+      ...retained,
+      alias: 'Fresh Alias',
+    });
   });
 
   it('propagates command failures without changing the entry', async () => {
