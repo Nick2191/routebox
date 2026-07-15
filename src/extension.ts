@@ -4,10 +4,11 @@ import {
   workspace,
   type ExtensionContext,
 } from 'vscode';
-import { registerWorkspaceCommands } from './commands/registerCommands.js';
+import { registerProjectCommands } from './commands/registerCommands.js';
 import { WorkspaceDiscoveryService } from './domain/discovery.js';
 import { ProjectReconciler } from './domain/reconciler.js';
 import { ProjectRegistry } from './domain/projectRegistry.js';
+import { resolveCurrentProjectUri } from './platform/currentProject.js';
 import {
   DiscoveryCoordinator,
   type RefreshReason,
@@ -20,16 +21,22 @@ import { ProjectTreeProvider } from './ui/projectTreeProvider.js';
 export async function activate(context: ExtensionContext): Promise<void> {
   const registry = new ProjectRegistry(new VscodeRegistryStorage(context.globalState));
   const loaded = await registry.load();
-  if (loaded.reset) {
-    void window.showWarningMessage(
-      'Workspace Atlas could not read its local registry and started with an empty list.',
-    );
-  }
+  const loadWarning = registryLoadWarning(loaded);
+  if (loadWarning) void window.showWarningMessage(loadWarning);
 
   const fs = new VscodeFileSystem();
-  const current = {
+  const currentWorkspace = {
     workspaceFileUri: (): string | undefined => workspace.workspaceFile?.toString(),
-    currentProjectUri: (): string | undefined => workspace.workspaceFile?.toString(),
+  };
+  const currentProject = {
+    currentProjectUri: (): string | undefined => {
+      const resolved = resolveCurrentProjectUri({
+        workspaceFileUri: workspace.workspaceFile?.toString(),
+        workspaceFolderUris: workspace.workspaceFolders
+          ?.map(folder => folder.uri.toString()) ?? [],
+      });
+      return resolved ? fs.canonicalize(resolved) : undefined;
+    },
   };
   const settings = {
     configuredRoots: (): readonly string[] => workspace
@@ -38,10 +45,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
   const discovery = new WorkspaceDiscoveryService(fs);
   const reconciler = new ProjectReconciler(registry, fs);
-  const tree = new ProjectTreeProvider(registry, current);
+  const tree = new ProjectTreeProvider(registry, currentProject);
   const coordinator = new DiscoveryCoordinator({
     settings,
-    current,
+    current: currentWorkspace,
     fs,
     discovery,
     reconciler,
@@ -71,7 +78,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     void coordinator.refresh(reason).catch(
       (error: unknown): void => {
         const detail = error instanceof Error ? error.message : String(error);
-        void window.showWarningMessage(`Workspace Atlas could not refresh workspaces: ${detail}`);
+        void window.showWarningMessage(`Workspace Atlas could not refresh projects: ${detail}`);
       },
     );
   };
@@ -80,13 +87,13 @@ export async function activate(context: ExtensionContext): Promise<void> {
     coordinator,
     tree,
     treeView,
-    ...registerWorkspaceCommands({
+    ...registerProjectCommands({
       registry,
       coordinator,
       opener,
       tree,
       fs,
-      current,
+      current: currentProject,
     }),
     treeView.onDidChangeVisibility(event => {
       if (event.visible) refresh('view-visible');
@@ -107,8 +114,21 @@ export function activationCleanupMessage(
   removed: number,
 ): string | undefined {
   if (reason !== 'activation' || removed <= 0) return undefined;
-  const suffix = removed === 1 ? 'workspace' : 'workspaces';
+  const suffix = removed === 1 ? 'project' : 'projects';
   return `Removed ${removed} missing ${suffix}.`;
+}
+
+export function registryLoadWarning(result: {
+  discarded: number;
+  reset: boolean;
+  migrated: number;
+}): string | undefined {
+  if (result.reset) {
+    return 'Workspace Atlas could not read its local registry and started with an empty list.';
+  }
+  if (result.discarded <= 0) return undefined;
+  const suffix = result.discarded === 1 ? 'project' : 'projects';
+  return `Workspace Atlas ignored ${result.discarded} invalid saved ${suffix}.`;
 }
 
 export function deactivate(): void {}

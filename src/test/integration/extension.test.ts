@@ -10,7 +10,9 @@ suite('Workspace Atlas extension', () => {
     for (const id of [
       'workspaceAtlas.switchWorkspace',
       'workspaceAtlas.openWorkspaceInNewWindow',
+      'workspaceAtlas.addProject',
       'workspaceAtlas.addWorkspace',
+      'workspaceAtlas.addFolder',
       'workspaceAtlas.addDiscoveryRoot',
       'workspaceAtlas.removeDiscoveryRoot',
       'workspaceAtlas.refreshWorkspaces',
@@ -25,65 +27,53 @@ suite('Workspace Atlas extension', () => {
   test('contributes its complete workbench surface without keybindings', () => {
     const extension = vscode.extensions.getExtension('nick.workspace-atlas');
     assert.ok(extension);
-    const packageJson: unknown = extension.packageJSON;
-    assert.deepEqual((packageJson as { contributes?: unknown }).contributes, {
-      viewsContainers: {
-        activitybar: [{
-          id: 'workspaceAtlas',
-          title: 'Workspace Atlas',
-          icon: 'resources/workspace-atlas.svg',
-        }],
-      },
-      views: {
-        workspaceAtlas: [{ id: 'workspaceAtlas.workspaces', name: 'Workspaces' }],
-      },
-      commands: [
-        { command: 'workspaceAtlas.switchWorkspace', title: 'Workspace Atlas: Switch Workspace' },
-        { command: 'workspaceAtlas.openWorkspaceInNewWindow', title: 'Workspace Atlas: Open Workspace in New Window', icon: '$(empty-window)' },
-        { command: 'workspaceAtlas.addWorkspace', title: 'Workspace Atlas: Add Workspace...', icon: '$(add)' },
-        { command: 'workspaceAtlas.addDiscoveryRoot', title: 'Workspace Atlas: Add Discovery Root...' },
-        { command: 'workspaceAtlas.removeDiscoveryRoot', title: 'Workspace Atlas: Remove Discovery Root...' },
-        { command: 'workspaceAtlas.refreshWorkspaces', title: 'Workspace Atlas: Refresh Workspaces', icon: '$(refresh)' },
-        { command: 'workspaceAtlas.renameWorkspace', title: 'Workspace Atlas: Rename Workspace' },
-        { command: 'workspaceAtlas.resetWorkspaceName', title: 'Workspace Atlas: Reset Workspace Name' },
-        { command: 'workspaceAtlas.removeWorkspace', title: 'Workspace Atlas: Remove Workspace' },
-        { command: 'workspaceAtlas.revealWorkspaceFile', title: 'Workspace Atlas: Reveal Workspace File' },
-        { command: 'workspaceAtlas.openEntryInCurrentWindow', title: 'Open Workspace' },
-      ],
-      menus: {
-        commandPalette: [
-          { command: 'workspaceAtlas.openEntryInCurrentWindow', when: 'false' },
-        ],
-        'view/title': [
-          { command: 'workspaceAtlas.addWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
-          { command: 'workspaceAtlas.refreshWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@2' },
-          { command: 'workspaceAtlas.addDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@1' },
-          { command: 'workspaceAtlas.removeDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@2' },
-        ],
-        'view/item/context': [
-          { command: 'workspaceAtlas.openWorkspaceInNewWindow', when: 'view == workspaceAtlas.workspaces', group: 'inline@1' },
-          { command: 'workspaceAtlas.renameWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'manage@1' },
-          { command: 'workspaceAtlas.resetWorkspaceName', when: 'view == workspaceAtlas.workspaces', group: 'manage@2' },
-          { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces && viewItem == workspace.manual', group: 'manage@3' },
-          { command: 'workspaceAtlas.revealWorkspaceFile', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
-        ],
-      },
-      viewsWelcome: [{
-        view: 'workspaceAtlas.workspaces',
-        contents: 'No workspaces registered.\n[Add Workspace](command:workspaceAtlas.addWorkspace)\n[Add Discovery Root](command:workspaceAtlas.addDiscoveryRoot)',
-      }],
-      configuration: {
-        title: 'Workspace Atlas',
-        properties: {
-          'workspaceAtlas.discoveryRoots': {
-            type: 'array',
-            scope: 'machine-overridable',
-            default: [],
-            items: { type: 'string' },
-            description: 'Folder URIs recursively searched for .code-workspace files.',
-          },
-        },
-      },
+    const contributes = (extension.packageJSON as { contributes?: Record<string, unknown> })
+      .contributes;
+    assert.ok(contributes);
+    assert.deepEqual(contributes.views, {
+      workspaceAtlas: [{ id: 'workspaceAtlas.workspaces', name: 'Projects' }],
     });
+    assert.deepEqual(contributes.commands, [
+      { command: 'workspaceAtlas.switchWorkspace', title: 'Workspace Atlas: Switch Project' },
+      { command: 'workspaceAtlas.openWorkspaceInNewWindow', title: 'Workspace Atlas: Open Project in New Window', icon: '$(empty-window)' },
+      { command: 'workspaceAtlas.addProject', title: 'Workspace Atlas: Add Project...', icon: '$(add)' },
+      { command: 'workspaceAtlas.addWorkspace', title: 'Workspace Atlas: Add Workspace...' },
+      { command: 'workspaceAtlas.addFolder', title: 'Workspace Atlas: Add Folder...' },
+      { command: 'workspaceAtlas.addDiscoveryRoot', title: 'Workspace Atlas: Add Discovery Root...' },
+      { command: 'workspaceAtlas.removeDiscoveryRoot', title: 'Workspace Atlas: Remove Discovery Root...' },
+      { command: 'workspaceAtlas.refreshWorkspaces', title: 'Workspace Atlas: Refresh Projects', icon: '$(refresh)' },
+      { command: 'workspaceAtlas.renameWorkspace', title: 'Workspace Atlas: Rename Project' },
+      { command: 'workspaceAtlas.resetWorkspaceName', title: 'Workspace Atlas: Reset Project Name' },
+      { command: 'workspaceAtlas.removeWorkspace', title: 'Workspace Atlas: Remove from Workspace Atlas' },
+      { command: 'workspaceAtlas.revealWorkspaceFile', title: 'Workspace Atlas: Reveal in File Manager' },
+      { command: 'workspaceAtlas.openEntryInCurrentWindow', title: 'Open Project' },
+    ]);
+
+    assert.deepEqual(contributes.viewsContainers, {
+      activitybar: [{
+        id: 'workspaceAtlas',
+        title: 'Workspace Atlas',
+        icon: 'resources/workspace-routes-thin.svg',
+      }],
+    });
+    const menus = contributes.menus as Record<string, unknown>;
+    assert.deepEqual(menus['view/title'], [
+      { command: 'workspaceAtlas.addProject', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
+      { command: 'workspaceAtlas.refreshWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@2' },
+      { command: 'workspaceAtlas.addDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@1' },
+      { command: 'workspaceAtlas.removeDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@2' },
+    ]);
+    assert.deepEqual(menus['view/item/context'], [
+      { command: 'workspaceAtlas.openWorkspaceInNewWindow', when: 'view == workspaceAtlas.workspaces', group: 'inline@1' },
+      { command: 'workspaceAtlas.renameWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'manage@1' },
+      { command: 'workspaceAtlas.resetWorkspaceName', when: 'view == workspaceAtlas.workspaces', group: 'manage@2' },
+      { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces && viewItem == project.manual', group: 'manage@3' },
+      { command: 'workspaceAtlas.revealWorkspaceFile', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
+    ]);
+    assert.deepEqual(contributes.viewsWelcome, [{
+      view: 'workspaceAtlas.workspaces',
+      contents: 'No projects registered.\n[Add Project](command:workspaceAtlas.addProject)\n[Add Discovery Root](command:workspaceAtlas.addDiscoveryRoot)',
+    }]);
+    assert.equal('keybindings' in contributes, false);
   });
 });

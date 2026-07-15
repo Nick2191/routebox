@@ -354,9 +354,6 @@ export function registerProjectCommands(
   ];
 }
 
-// Kept until extension wiring migrates to the project-oriented export in Task 6.
-export const registerWorkspaceCommands = registerProjectCommands;
-
 function entryId(argument: EntryArgument): string | undefined {
   if (typeof argument === 'string') return argument;
   if ('entry' in argument && argument.entry) return argument.entry.id;
