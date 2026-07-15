@@ -101,8 +101,8 @@ describe('buildProjectQuickPickItems', () => {
 
     await expect(new VscodeProjectUi().pickProjectKind()).resolves.toBe('folder');
     expect(items).toEqual([
-      { label: 'Workspace File', kind: 'workspace' },
-      { label: 'Folder', kind: 'folder' },
+      { label: 'Workspace File', projectKind: 'workspace' },
+      { label: 'Folder', projectKind: 'folder' },
     ]);
   });
 

@@ -117,14 +117,12 @@ class VscodeDiscoveryRootSettings implements DiscoveryRootSettings {
 
 export class VscodeProjectUi implements ProjectUi {
   async pickProjectKind(): Promise<ProjectKind | undefined> {
-    const items = [
-      { label: 'Workspace File', kind: 'workspace' as const },
-      { label: 'Folder', kind: 'folder' as const },
+    const items: { label: string; projectKind: ProjectKind }[] = [
+      { label: 'Workspace File', projectKind: 'workspace' },
+      { label: 'Folder', projectKind: 'folder' },
     ];
-    const selected = await window.showQuickPick(
-      items as unknown as readonly { label: string }[],
-    );
-    return (selected as typeof items[number] | undefined)?.kind;
+    const selected = await window.showQuickPick(items);
+    return selected?.projectKind;
   }
 
   async pickWorkspaceFiles(): Promise<readonly string[]> {
