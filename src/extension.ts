@@ -15,7 +15,7 @@ import {
 import { VscodeFileSystem } from './platform/vscodeFileSystem.js';
 import { VscodeRegistryStorage } from './platform/vscodeRegistryStorage.js';
 import { ProjectOpener } from './platform/projectOpener.js';
-import { WorkspaceTreeProvider } from './ui/workspaceTreeProvider.js';
+import { ProjectTreeProvider } from './ui/projectTreeProvider.js';
 
 export async function activate(context: ExtensionContext): Promise<void> {
   const registry = new ProjectRegistry(new VscodeRegistryStorage(context.globalState));
@@ -29,6 +29,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const fs = new VscodeFileSystem();
   const current = {
     workspaceFileUri: (): string | undefined => workspace.workspaceFile?.toString(),
+    currentProjectUri: (): string | undefined => workspace.workspaceFile?.toString(),
   };
   const settings = {
     configuredRoots: (): readonly string[] => workspace
@@ -37,7 +38,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
   const discovery = new WorkspaceDiscoveryService(fs);
   const reconciler = new ProjectReconciler(registry, fs);
-  const tree = new WorkspaceTreeProvider(registry, current);
+  const tree = new ProjectTreeProvider(registry, current);
   const coordinator = new DiscoveryCoordinator({
     settings,
     current,

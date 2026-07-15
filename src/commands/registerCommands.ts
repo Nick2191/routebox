@@ -14,7 +14,7 @@ import {
 } from '../domain/projectEntry.js';
 import type { RefreshResult } from '../platform/discoveryCoordinator.js';
 import type { OpenMode, OpenResult } from '../platform/projectOpener.js';
-import { buildWorkspaceQuickPickItems } from '../ui/workspaceQuickPick.js';
+import { buildProjectQuickPickItems } from '../ui/projectQuickPick.js';
 
 export const commandIds = {
   switchWorkspace: 'workspaceAtlas.switchWorkspace',
@@ -140,7 +140,7 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
     currentUri?: string,
   ): Promise<ProjectEntry | undefined> {
     const selected = await window.showQuickPick(
-      buildWorkspaceQuickPickItems(entries, currentUri),
+      buildProjectQuickPickItems(entries, currentUri),
       {
         placeHolder: 'Select a workspace',
         matchOnDescription: true,
