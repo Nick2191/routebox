@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileKind, FileSystemPort, TargetKind } from '../../domain/discovery.js';
 import { ProjectReconciler } from '../../domain/reconciler.js';
 import {
@@ -259,7 +259,10 @@ describe('ProjectReconciler', () => {
     fs.setKind(missing.uri, 'missing');
     fs.setKind(existingUri, 'file');
 
-    await expect(reconciler.removeMissing()).resolves.toEqual({ removed: 1 });
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [],
+    });
 
     expect(registry.list()).toEqual([{
       id: existingUri,
@@ -270,13 +273,35 @@ describe('ProjectReconciler', () => {
     }]);
   });
 
+  it('removes confirmed missing entries while retaining and reporting inaccessible targets', async () => {
+    const missing = await registry.upsertManualWorkspace('file:///root/missing.code-workspace');
+    const inaccessible = await registry.upsertManualFolder('file:///root/inaccessible');
+    fs.setKind(missing.uri, 'missing');
+    const statKind = fs.statKind.bind(fs);
+    vi.spyOn(fs, 'statKind').mockImplementation(uri => (
+      uri === inaccessible.uri
+        ? Promise.reject(new Error('Permission denied'))
+        : statKind(uri)
+    ));
+
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [{ uri: inaccessible.uri, error: 'Permission denied' }],
+    });
+    expect(registry.get(missing.id)).toBeUndefined();
+    expect(registry.get(inaccessible.id)).toEqual(inaccessible);
+  });
+
   it('removes missing folders but retains entries whose kind changed', async () => {
     const missing = await registry.upsertManualFolder('file:///work/missing');
     const changed = await registry.upsertManualFolder('file:///work/changed');
     fs.setKind(missing.uri, 'missing');
     fs.setKind(changed.uri, 'file');
 
-    await expect(reconciler.removeMissing()).resolves.toEqual({ removed: 1 });
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [],
+    });
     expect(registry.get(missing.id)).toBeUndefined();
     expect(registry.get(changed.id)).toEqual(changed);
   });
@@ -300,7 +325,7 @@ describe('ProjectReconciler', () => {
     });
     blockingFs.release();
 
-    await expect(cleanup).resolves.toEqual({ removed: 1 });
+    await expect(cleanup).resolves.toEqual({ removed: 1, targetAccessErrors: [] });
     expect(registry.get(missing.id)).toBeUndefined();
     expect(registry.get(retained.id)).toMatchObject({
       alias: 'Retained Alias',

@@ -141,6 +141,22 @@ describe('ProjectRegistry', () => {
     expect(report).toEqual({ discarded: 1, reset: false, migrated: 0 });
   });
 
+  it('discards explicit and legacy non-local project records', async () => {
+    storage.value = [
+      { id: 'vscode-remote://ssh-remote+host/work/a.code-workspace', uri: 'vscode-remote://ssh-remote+host/work/a.code-workspace', kind: 'workspace', manuallyRegistered: true, discoveredFrom: [] },
+      { id: 'vscode-remote://ssh-remote+host/work/folder', uri: 'vscode-remote://ssh-remote+host/work/folder', kind: 'folder', manuallyRegistered: true, discoveredFrom: [] },
+      { id: 'vscode-remote://ssh-remote+host/work/legacy.code-workspace', uri: 'vscode-remote://ssh-remote+host/work/legacy.code-workspace', manuallyRegistered: true, discoveredFrom: [] },
+    ];
+    registry = new ProjectRegistry(storage);
+
+    await expect(registry.load()).resolves.toEqual({
+      discarded: 3,
+      reset: false,
+      migrated: 0,
+    });
+    expect(registry.list()).toEqual([]);
+  });
+
   it('discards a persisted record with a non-string alias', async () => {
     storage.value = [
       {
@@ -217,6 +233,21 @@ describe('ProjectRegistry', () => {
       kind: 'folder',
       alias: 'Atlas folder',
     }]);
+  });
+
+  it('rejects non-local manual workspace and folder registrations', async () => {
+    await expect(registry.upsertManualWorkspace(
+      'vscode-remote://ssh-remote+host/work/a.code-workspace',
+    )).rejects.toThrow('Select a local .code-workspace file.');
+    await expect(registry.upsertManualFolder(
+      'vscode-remote://ssh-remote+host/work/folder',
+    )).rejects.toThrow('Select a local folder.');
+    expect(registry.list()).toEqual([]);
+  });
+
+  it('uses project-oriented copy when a queued mutation targets a stale entry', async () => {
+    await expect(registry.setAlias('file:///work/missing', 'Missing'))
+      .rejects.toThrow('Project is no longer registered.');
   });
 
   it('rejects explicit unknown kinds and impossible discovered folders', async () => {

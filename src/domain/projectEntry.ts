@@ -14,6 +14,10 @@ export interface ProjectEntry {
   lastOpenedAt?: number;
 }
 
+export function isLocalFileUri(value: string): boolean {
+  return Uri.parse(value).scheme === 'file';
+}
+
 export function isWorkspaceFileUri(uri: string): boolean {
   return posix.extname(Uri.parse(uri).path).toLowerCase() === '.code-workspace';
 }

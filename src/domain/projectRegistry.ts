@@ -1,4 +1,5 @@
 import {
+  isLocalFileUri,
   isWorkspaceFileUri,
   type ProjectEntry,
   type ProjectKind,
@@ -28,10 +29,11 @@ function normalizeEntry(value: unknown): { entry?: ProjectEntry; migrated: boole
     && sourcesValid
     && (item.lastOpenedAt === undefined || typeof item.lastOpenedAt === 'number');
   const kindValid = kind === 'workspace' || kind === 'folder';
+  const localValid = typeof item.uri === 'string' && isLocalFileUri(item.uri);
   const workspaceValid = kind !== 'workspace' || isWorkspaceFileUri(item.uri ?? '');
   const folderValid = kind !== 'folder'
     || (item.manuallyRegistered === true && item.discoveredFrom?.length === 0);
-  if (!commonValid || !kindValid || !workspaceValid || !folderValid) {
+  if (!commonValid || !kindValid || !localValid || !workspaceValid || !folderValid) {
     return { migrated: false };
   }
   return {
@@ -68,6 +70,9 @@ export class ProjectRegistry {
   }
 
   upsertManualWorkspace(uri: string): Promise<ProjectEntry> {
+    if (!isLocalFileUri(uri)) {
+      return Promise.reject(new Error('Select a local .code-workspace file.'));
+    }
     if (!isWorkspaceFileUri(uri)) {
       return Promise.reject(new Error('Select a .code-workspace file.'));
     }
@@ -75,6 +80,9 @@ export class ProjectRegistry {
   }
 
   upsertManualFolder(uri: string): Promise<ProjectEntry> {
+    if (!isLocalFileUri(uri)) {
+      return Promise.reject(new Error('Select a local folder.'));
+    }
     return this.upsertManual(uri, 'folder');
   }
 
@@ -141,7 +149,7 @@ export class ProjectRegistry {
 
   private require(entries: ReadonlyMap<string, ProjectEntry>, id: string): ProjectEntry {
     const entry = entries.get(id);
-    if (!entry) throw new Error('Workspace is no longer registered.');
+    if (!entry) throw new Error('Project is no longer registered.');
     return entry;
   }
 

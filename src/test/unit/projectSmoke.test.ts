@@ -129,7 +129,13 @@ describe('project smoke semantics', () => {
     const callbacks = new Map<string, (...args: unknown[]) => unknown>();
     registerProjectCommands({
       registry,
-      coordinator: { refresh: () => Promise.resolve({ removed: 0, errors: [] }) },
+      coordinator: {
+        refresh: () => Promise.resolve({
+          removed: 0,
+          scanErrors: [],
+          targetAccessErrors: [],
+        }),
+      },
       opener,
       tree: { refresh: () => undefined },
       fs,

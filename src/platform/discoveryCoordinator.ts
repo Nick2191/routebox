@@ -1,7 +1,12 @@
 import { homedir } from 'node:os';
-import { FileSystemError, RelativePattern, Uri, workspace, type Disposable } from 'vscode';
+import { RelativePattern, Uri, workspace, type Disposable } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../domain/discovery.js';
-import type { ProjectEntry, WorkspaceSourceId } from '../domain/projectEntry.js';
+import {
+  isLocalFileUri,
+  type ProjectEntry,
+  type WorkspaceSourceId,
+} from '../domain/projectEntry.js';
+import type { RemoveMissingResult, TargetAccessError } from '../domain/reconciler.js';
 
 export type RefreshReason =
   | 'activation'
@@ -26,7 +31,7 @@ interface DiscoveryPort {
 interface ReconcilerPort {
   reconcileSource(source: WorkspaceSourceId, result: DiscoveryResult): Promise<void>;
   retireSource(source: WorkspaceSourceId): Promise<void>;
-  removeMissing(): Promise<{ removed: number }>;
+  removeMissing(): Promise<RemoveMissingResult>;
 }
 
 interface RegistryPort {
@@ -80,7 +85,8 @@ export interface DiscoveryCoordinatorOptions {
 
 export interface RefreshResult {
   removed: number;
-  errors: DiscoveryResult[];
+  scanErrors: DiscoveryResult[];
+  targetAccessErrors: TargetAccessError[];
 }
 
 export class DiscoveryCoordinator {
@@ -149,7 +155,7 @@ export class DiscoveryCoordinator {
       .map(root => ({ root, source: `configured:${root}` }));
     const workspaceFile = this.options.current.workspaceFileUri();
     let currentSource: WorkspaceSourceId | undefined;
-    if (workspaceFile) {
+    if (workspaceFile && isLocalFileUri(workspaceFile)) {
       const canonicalWorkspaceFile = this.options.fs.canonicalize(workspaceFile);
       const containing = this.options.fs.parent(canonicalWorkspaceFile);
       const root = this.options.fs.parent(containing);
@@ -179,7 +185,7 @@ export class DiscoveryCoordinator {
     const currentSourcesToRetire = [...persistedCurrentSources]
       .filter(source => source !== currentSource);
 
-    const errors: DiscoveryResult[] = [];
+    const scanErrors: DiscoveryResult[] = [];
     const results: Array<{ source: WorkspaceSourceId; result: DiscoveryResult }> = [];
     for (const { root, source } of roots) {
       const scanned = await this.options.discovery.scan(root);
@@ -189,7 +195,7 @@ export class DiscoveryCoordinator {
         rootUri: this.options.fs.canonicalize(scanned.rootUri),
         workspaceUris: scanned.workspaceUris.map(uri => this.options.fs.canonicalize(uri)),
       };
-      if (result.status === 'error') errors.push(result);
+      if (result.status === 'error') scanErrors.push(result);
       results.push({ source, result });
     }
     if (this.disposed) return this.emptyResult();
@@ -203,20 +209,15 @@ export class DiscoveryCoordinator {
       await this.options.reconciler.reconcileSource(source, result);
     }
     if (this.disposed) return this.emptyResult();
-    let removed = 0;
-    try {
-      ({ removed } = await this.options.reconciler.removeMissing());
-    } catch (error) {
-      if (errors.length === 0 || !(error instanceof FileSystemError)) throw error;
-    }
+    const { removed, targetAccessErrors } = await this.options.reconciler.removeMissing();
     this.updateWatchers();
-    return { removed, errors };
+    return { removed, scanErrors, targetAccessErrors };
   }
 
   private activeRoots(): string[] {
     const roots = this.configuredRoots();
     const workspaceFile = this.options.current.workspaceFileUri();
-    if (workspaceFile) {
+    if (workspaceFile && isLocalFileUri(workspaceFile)) {
       const containing = this.options.fs.parent(this.options.fs.canonicalize(workspaceFile));
       const automaticRoot = this.options.fs.parent(containing);
       if (this.automaticRootPolicy.allows(automaticRoot)) roots.push(automaticRoot);
@@ -227,6 +228,7 @@ export class DiscoveryCoordinator {
   private configuredRoots(): string[] {
     return [...new Set(
       this.options.settings.configuredRoots()
+        .filter(isLocalFileUri)
         .map(root => this.options.fs.canonicalize(root)),
     )];
   }
@@ -247,7 +249,9 @@ export class DiscoveryCoordinator {
     );
   }
 
-  private emptyResult(): RefreshResult { return { removed: 0, errors: [] }; }
+  private emptyResult(): RefreshResult {
+    return { removed: 0, scanErrors: [], targetAccessErrors: [] };
+  }
 
   private disposeWatchers(): void {
     this.disposeResources(this.watcherResources);

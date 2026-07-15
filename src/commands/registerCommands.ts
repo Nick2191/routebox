@@ -8,6 +8,7 @@ import {
 } from 'vscode';
 import type { FileSystemPort } from '../domain/discovery.js';
 import {
+  isLocalFileUri,
   isWorkspaceFileUri,
   projectLabel,
   type ProjectEntry,
@@ -235,6 +236,9 @@ export function registerProjectCommands(
   const addWorkspace = async (): Promise<void> => {
     const selected = (await ui.pickWorkspaceFiles())
       .map(uri => dependencies.fs.canonicalize(uri));
+    if (selected.some(uri => !isLocalFileUri(uri))) {
+      throw new Error('Select a local .code-workspace file.');
+    }
     const kinds = await Promise.all(selected.map(uri => dependencies.fs.statKind(uri)));
     if (selected.some((uri, index) => !isWorkspaceFileUri(uri) || kinds[index] !== 'file')) {
       throw new Error('Select .code-workspace files only.');
@@ -246,6 +250,9 @@ export function registerProjectCommands(
   const addFolder = async (): Promise<void> => {
     const selected = (await ui.pickFolders())
       .map(uri => dependencies.fs.canonicalize(uri));
+    if (selected.some(uri => !isLocalFileUri(uri))) {
+      throw new Error('Select a local folder.');
+    }
     const kinds = await Promise.all(selected.map(uri => dependencies.fs.statKind(uri)));
     if (kinds.some(kind => kind !== 'directory')) throw new Error('Select folders only.');
     for (const uri of selected) await dependencies.registry.upsertManualFolder(uri);
@@ -266,6 +273,7 @@ export function registerProjectCommands(
   const addDiscoveryRoot = async (): Promise<void> => {
     const selected = await ui.pickDiscoveryRoot();
     if (!selected) return;
+    if (!isLocalFileUri(selected)) throw new Error('Select a local discovery root.');
     const canonical = dependencies.fs.canonicalize(selected);
     const configured = roots.configuredRoots()
       .map(root => dependencies.fs.canonicalize(root));
@@ -292,12 +300,16 @@ export function registerProjectCommands(
       const suffix = result.removed === 1 ? 'project' : 'projects';
       await ui.showInfo(`Removed ${result.removed} missing ${suffix}.`);
     }
-    if (result.errors.length > 0) {
-      await ui.showWarning(result.errors.map(error => {
+    const warnings = [
+      ...result.scanErrors.map(error => {
         const detail = error.error ?? 'Unknown scan error.';
         return `Unable to scan ${error.rootUri}: ${detail}`;
-      }).join('\n'));
-    }
+      }),
+      ...result.targetAccessErrors.map(error => (
+        `Unable to access ${error.uri}: ${error.error}`
+      )),
+    ];
+    if (warnings.length > 0) await ui.showWarning(warnings.join('\n'));
   };
 
   const rename = async (argument?: EntryArgument): Promise<void> => {

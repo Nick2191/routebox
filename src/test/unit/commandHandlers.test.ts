@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TargetKind } from '../../domain/discovery.js';
 import type { ProjectEntry, ProjectKind } from '../../domain/projectEntry.js';
+import type { RefreshResult } from '../../platform/discoveryCoordinator.js';
 import {
   commandIds,
   registerProjectCommands,
@@ -91,7 +92,11 @@ function createHarness(): {
     removeManual: vi.fn(() => Promise.resolve()),
   };
   const coordinator = {
-    refresh: vi.fn(() => Promise.resolve({ removed: 0, errors: [] })),
+    refresh: vi.fn<() => Promise<RefreshResult>>(() => Promise.resolve({
+      removed: 0,
+      scanErrors: [],
+      targetAccessErrors: [],
+    })),
   };
   const opener = { open: vi.fn(() => Promise.resolve({ status: 'opened' as const })) };
   const fs = {
@@ -179,6 +184,19 @@ describe('project command handlers', () => {
     expect(tree.refresh.mock.calls).toHaveLength(1);
   });
 
+  it('rejects a non-local workspace before filesystem inspection or registry mutation', async () => {
+    const { run, ui, registry, fs, tree } = createHarness();
+    ui.workspaceFiles = ['vscode-remote://ssh-remote+host/work/a.code-workspace'];
+    const statKind = vi.spyOn(fs, 'statKind');
+
+    await run(commandIds.addWorkspace);
+
+    expect(statKind).not.toHaveBeenCalled();
+    expect(registry.upsertManualWorkspace).not.toHaveBeenCalled();
+    expect(tree.refresh).not.toHaveBeenCalled();
+    expect(ui.errors).toEqual(['Select a local .code-workspace file.']);
+  });
+
   it.each(['workspace', 'folder'] as const)('routes Add Project choice %s', async kind => {
     const harness = createHarness();
     harness.ui.projectKind = kind;
@@ -225,6 +243,19 @@ describe('project command handlers', () => {
     expect(ui.errors).toEqual(['Select folders only.']);
   });
 
+  it('rejects a non-local folder before filesystem inspection or registry mutation', async () => {
+    const { run, ui, registry, fs, tree } = createHarness();
+    ui.folders = ['vscode-remote://ssh-remote+host/work/folder'];
+    const statKind = vi.spyOn(fs, 'statKind');
+
+    await run(commandIds.addFolder);
+
+    expect(statKind).not.toHaveBeenCalled();
+    expect(registry.upsertManualFolder).not.toHaveBeenCalled();
+    expect(tree.refresh).not.toHaveBeenCalled();
+    expect(ui.errors).toEqual(['Select a local folder.']);
+  });
+
   it('uses reuse mode for the primary switch command chosen from Quick Pick', async () => {
     const { run, ui, opener } = createHarness();
     ui.pickedProject = alpha;
@@ -268,12 +299,13 @@ describe('project command handlers', () => {
     const { run, coordinator, ui, tree } = createHarness();
     coordinator.refresh.mockResolvedValue({
       removed: 2,
-      errors: [{
+      scanErrors: [{
         rootUri: 'file:///unreadable',
         workspaceUris: [],
         status: 'error',
         error: 'Permission denied',
       }],
+      targetAccessErrors: [],
     });
 
     await run(commandIds.refresh);
@@ -285,18 +317,42 @@ describe('project command handlers', () => {
     expect(tree.refresh.mock.calls).toHaveLength(1);
   });
 
+  it('reports scan and target-access failures in one warning on manual refresh', async () => {
+    const { run, coordinator, ui } = createHarness();
+    coordinator.refresh.mockResolvedValue({
+      removed: 0,
+      scanErrors: [{
+        rootUri: 'file:///unreadable-root',
+        workspaceUris: [],
+        status: 'error',
+        error: 'Root permission denied',
+      }],
+      targetAccessErrors: [{
+        uri: 'file:///inaccessible.code-workspace',
+        error: 'Target permission denied',
+      }],
+    });
+
+    await run(commandIds.refresh);
+
+    expect(ui.warnings).toHaveLength(1);
+    expect(ui.warnings[0]).toContain('Root permission denied');
+    expect(ui.warnings[0]).toContain('Target permission denied');
+  });
+
   it('does not show scan warnings while refreshing provenance after root removal', async () => {
     const { run, coordinator, roots, ui, tree } = createHarness();
     roots.values = ['file:///keep', 'file:///remove'];
     ui.rootToRemove = 'file:///remove';
     coordinator.refresh.mockResolvedValue({
       removed: 1,
-      errors: [{
+      scanErrors: [{
         rootUri: 'file:///keep',
         workspaceUris: [],
         status: 'error',
         error: 'Temporarily unavailable',
       }],
+      targetAccessErrors: [],
     });
 
     await run(commandIds.removeDiscoveryRoot);
@@ -321,6 +377,19 @@ describe('project command handlers', () => {
     await run(commandIds.addDiscoveryRoot);
 
     expect(roots.update.mock.calls).toEqual([[[canonical]]]);
+  });
+
+  it('rejects a non-local discovery root before filesystem inspection or settings mutation', async () => {
+    const { run, ui, roots, fs, coordinator } = createHarness();
+    ui.discoveryRoot = 'vscode-remote://ssh-remote+host/work';
+    const statKind = vi.spyOn(fs, 'statKind');
+
+    await run(commandIds.addDiscoveryRoot);
+
+    expect(statKind).not.toHaveBeenCalled();
+    expect(roots.update).not.toHaveBeenCalled();
+    expect(coordinator.refresh).not.toHaveBeenCalled();
+    expect(ui.errors).toEqual(['Select a local discovery root.']);
   });
 
   it('canonicalizes and deduplicates existing roots before complete removal', async () => {

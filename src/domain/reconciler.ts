@@ -2,6 +2,16 @@ import type { DiscoveryResult, FileSystemPort } from './discovery.js';
 import type { WorkspaceSourceId } from './projectEntry.js';
 import type { ProjectRegistry } from './projectRegistry.js';
 
+export interface TargetAccessError {
+  uri: string;
+  error: string;
+}
+
+export interface RemoveMissingResult {
+  removed: number;
+  targetAccessErrors: TargetAccessError[];
+}
+
 export class ProjectReconciler {
   constructor(
     private readonly registry: ProjectRegistry,
@@ -47,15 +57,36 @@ export class ProjectReconciler {
     });
   }
 
-  async removeMissing(): Promise<{ removed: number }> {
+  async removeMissing(): Promise<RemoveMissingResult> {
     const current = this.registry.list();
-    const checks = await Promise.all(current.map(async entry => [
-      entry,
-      await this.fs.statKind(entry.uri),
-    ] as const));
+    const checks = await Promise.all(current.map(async entry => {
+      try {
+        return {
+          status: 'ok',
+          entry,
+          kind: await this.fs.statKind(entry.uri),
+        } as const;
+      } catch (error) {
+        return {
+          status: 'error',
+          entry,
+          targetAccessError: {
+            uri: entry.uri,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        } as const;
+      }
+    }));
     const missingIds = checks
-      .filter(([, kind]) => kind === 'missing')
-      .map(([entry]) => entry.id);
-    return { removed: await this.registry.remove(missingIds) };
+      .filter(check => check.status === 'ok' && check.kind === 'missing')
+      .map(check => check.entry.id);
+    const targetAccessErrors = checks.reduce<TargetAccessError[]>((errors, check) => {
+      if (check.status === 'error') errors.push(check.targetAccessError);
+      return errors;
+    }, []);
+    return {
+      removed: await this.registry.remove(missingIds),
+      targetAccessErrors,
+    };
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isLocalFileUri,
   isWorkspaceFileUri,
   projectLabel,
   sortProjectEntries,
@@ -17,6 +18,12 @@ const project = (uri: string, kind: ProjectKind, alias?: string): ProjectEntry =
 });
 
 describe('project entries', () => {
+  it('accepts local drive and UNC file URIs but rejects remote schemes', () => {
+    expect(isLocalFileUri('file:///C:/Users/Nick/project')).toBe(true);
+    expect(isLocalFileUri('file://workspace-server/projects/atlas')).toBe(true);
+    expect(isLocalFileUri('vscode-remote://ssh-remote+host/work/atlas')).toBe(false);
+  });
+
   it('derives workspace and folder labels while preferring aliases', () => {
     expect(projectLabel(project('file:///work/atlas.code-workspace', 'workspace')))
       .toBe('atlas');
