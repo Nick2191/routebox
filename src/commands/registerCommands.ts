@@ -8,38 +8,50 @@ import {
 } from 'vscode';
 import type { FileSystemPort } from '../domain/discovery.js';
 import {
+  isLocalFileUri,
   isWorkspaceFileUri,
-  workspaceLabel,
-  type WorkspaceEntry,
-} from '../domain/workspaceEntry.js';
+  projectLabel,
+  type ExcludedWorkspace,
+  type ProjectEntry,
+  type ProjectKind,
+} from '../domain/projectEntry.js';
 import type { RefreshResult } from '../platform/discoveryCoordinator.js';
-import type { OpenMode, OpenResult } from '../platform/workspaceOpener.js';
-import { buildWorkspaceQuickPickItems } from '../ui/workspaceQuickPick.js';
+import type { OpenMode, OpenResult } from '../platform/projectOpener.js';
+import { buildProjectQuickPickItems } from '../ui/projectQuickPick.js';
+import {
+  VscodeExcludedWorkspacePicker,
+  type ExcludedWorkspacePicker,
+} from '../ui/excludedWorkspaceQuickPick.js';
 
 export const commandIds = {
-  switchWorkspace: 'workspaceAtlas.switchWorkspace',
+  switchProject: 'workspaceAtlas.switchWorkspace',
   openNewWindow: 'workspaceAtlas.openWorkspaceInNewWindow',
+  addProject: 'workspaceAtlas.addProject',
   addWorkspace: 'workspaceAtlas.addWorkspace',
+  addFolder: 'workspaceAtlas.addFolder',
   addDiscoveryRoot: 'workspaceAtlas.addDiscoveryRoot',
   removeDiscoveryRoot: 'workspaceAtlas.removeDiscoveryRoot',
   refresh: 'workspaceAtlas.refreshWorkspaces',
   rename: 'workspaceAtlas.renameWorkspace',
   resetName: 'workspaceAtlas.resetWorkspaceName',
   remove: 'workspaceAtlas.removeWorkspace',
+  showExcluded: 'workspaceAtlas.showExcludedWorkspaces',
   reveal: 'workspaceAtlas.revealWorkspaceFile',
 } as const;
 
 export const openCurrentCommandId = 'workspaceAtlas.openEntryInCurrentWindow';
 
-export interface WorkspaceUi {
+export interface ProjectUi {
+  pickProjectKind(): Promise<ProjectKind | undefined>;
   pickWorkspaceFiles(): Promise<readonly string[]>;
+  pickFolders(): Promise<readonly string[]>;
   pickDiscoveryRoot(): Promise<string | undefined>;
   pickDiscoveryRootToRemove(roots: readonly string[]): Promise<string | undefined>;
-  pickWorkspace(
-    entries: readonly WorkspaceEntry[],
+  pickProject(
+    entries: readonly ProjectEntry[],
     currentUri?: string,
-  ): Promise<WorkspaceEntry | undefined>;
-  inputAlias(entry: WorkspaceEntry): Promise<string | undefined>;
+  ): Promise<ProjectEntry | undefined>;
+  inputAlias(entry: ProjectEntry): Promise<string | undefined>;
   showInfo(message: string): Promise<void>;
   showWarning(message: string): Promise<void>;
   showError(message: string): Promise<void>;
@@ -47,12 +59,15 @@ export interface WorkspaceUi {
 }
 
 interface RegistryCommandPort {
-  list(): WorkspaceEntry[];
-  get(id: string): WorkspaceEntry | undefined;
-  upsertManual(uri: string): Promise<unknown>;
+  list(): ProjectEntry[];
+  listExcluded(): ExcludedWorkspace[];
+  get(id: string): ProjectEntry | undefined;
+  upsertManualWorkspace(uri: string): Promise<unknown>;
+  upsertManualFolder(uri: string): Promise<unknown>;
   setAlias(id: string, alias: string): Promise<void>;
   resetAlias(id: string): Promise<void>;
-  removeManual(id: string): Promise<void>;
+  removeProject(id: string): Promise<unknown>;
+  restoreExcluded(id: string): Promise<unknown>;
 }
 
 interface CoordinatorCommandPort {
@@ -69,7 +84,7 @@ interface DiscoveryRootSettings {
 }
 
 interface TreeRefreshPort { refresh(): void }
-interface CurrentWorkspacePort { workspaceFileUri(): string | undefined }
+interface CurrentProjectPort { currentProjectUri(): string | undefined }
 
 interface CommandRegistry {
   registerCommand(
@@ -78,20 +93,21 @@ interface CommandRegistry {
   ): Disposable;
 }
 
-export interface RegisterWorkspaceCommandsDependencies {
+export interface RegisterProjectCommandsDependencies {
   registry: RegistryCommandPort;
   coordinator: CoordinatorCommandPort;
   opener: OpenerCommandPort;
   tree: TreeRefreshPort;
-  fs: Pick<FileSystemPort, 'canonicalize'>;
-  current: CurrentWorkspacePort;
+  fs: Pick<FileSystemPort, 'canonicalize' | 'statKind'>;
+  current: CurrentProjectPort;
+  excludedPicker?: ExcludedWorkspacePicker;
   roots?: DiscoveryRootSettings;
-  ui?: WorkspaceUi;
+  ui?: ProjectUi;
   commands?: CommandRegistry;
 }
 
-type EntryArgument = WorkspaceEntry | string | {
-  entry?: WorkspaceEntry;
+type EntryArgument = ProjectEntry | string | {
+  entry?: ProjectEntry;
   id?: string;
 };
 
@@ -109,11 +125,29 @@ class VscodeDiscoveryRootSettings implements DiscoveryRootSettings {
   }
 }
 
-export class VscodeWorkspaceUi implements WorkspaceUi {
+export class VscodeProjectUi implements ProjectUi {
+  async pickProjectKind(): Promise<ProjectKind | undefined> {
+    const items: { label: string; projectKind: ProjectKind }[] = [
+      { label: 'Workspace File', projectKind: 'workspace' },
+      { label: 'Folder', projectKind: 'folder' },
+    ];
+    const selected = await window.showQuickPick(items);
+    return selected?.projectKind;
+  }
+
   async pickWorkspaceFiles(): Promise<readonly string[]> {
     const selected = await window.showOpenDialog({
       canSelectMany: true,
       filters: { 'VS Code Workspaces': ['code-workspace'] },
+    });
+    return selected?.map(uri => uri.toString()) ?? [];
+  }
+
+  async pickFolders(): Promise<readonly string[]> {
+    const selected = await window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: true,
     });
     return selected?.map(uri => uri.toString()) ?? [];
   }
@@ -135,14 +169,14 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
     return selected?.uri;
   }
 
-  async pickWorkspace(
-    entries: readonly WorkspaceEntry[],
+  async pickProject(
+    entries: readonly ProjectEntry[],
     currentUri?: string,
-  ): Promise<WorkspaceEntry | undefined> {
+  ): Promise<ProjectEntry | undefined> {
     const selected = await window.showQuickPick(
-      buildWorkspaceQuickPickItems(entries, currentUri),
+      buildProjectQuickPickItems(entries, currentUri),
       {
-        placeHolder: 'Select a workspace',
+        placeHolder: 'Select a workspace or folder',
         matchOnDescription: true,
         matchOnDetail: true,
       },
@@ -150,10 +184,10 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
     return selected?.entry;
   }
 
-  async inputAlias(entry: WorkspaceEntry): Promise<string | undefined> {
+  async inputAlias(entry: ProjectEntry): Promise<string | undefined> {
     return await window.showInputBox({
-      prompt: 'Enter a name for this workspace',
-      value: entry.alias ?? workspaceLabel(entry),
+      prompt: 'Enter a name for this project',
+      value: entry.alias ?? projectLabel(entry),
     });
   }
 
@@ -174,23 +208,24 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
   }
 }
 
-export function registerWorkspaceCommands(
-  dependencies: RegisterWorkspaceCommandsDependencies,
+export function registerProjectCommands(
+  dependencies: RegisterProjectCommandsDependencies,
 ): Disposable[] {
-  const ui = dependencies.ui ?? new VscodeWorkspaceUi();
+  const ui = dependencies.ui ?? new VscodeProjectUi();
   const roots = dependencies.roots ?? new VscodeDiscoveryRootSettings();
   const commandRegistry = dependencies.commands ?? vscodeCommands;
+  const excludedPicker = dependencies.excludedPicker ?? new VscodeExcludedWorkspacePicker();
 
-  const selectEntry = async (argument?: EntryArgument): Promise<WorkspaceEntry | undefined> => {
+  const selectEntry = async (argument?: EntryArgument): Promise<ProjectEntry | undefined> => {
     if (argument === undefined) {
-      return ui.pickWorkspace(
+      return ui.pickProject(
         dependencies.registry.list(),
-        dependencies.current.workspaceFileUri(),
+        dependencies.current.currentProjectUri(),
       );
     }
     const id = entryId(argument);
     const entry = id ? dependencies.registry.get(id) : undefined;
-    if (!entry) throw new Error('Workspace is no longer registered.');
+    if (!entry) throw new Error('Project is no longer registered.');
     return entry;
   };
 
@@ -199,17 +234,45 @@ export function registerWorkspaceCommands(
     if (!entry) return;
     const result = await dependencies.opener.open(entry.id, mode);
     dependencies.tree.refresh();
-    if (result.status === 'missing') await ui.showWarning('Workspace no longer exists.');
+    if (result.status === 'missing') await ui.showWarning('Project no longer exists.');
+    if (result.status === 'kind-mismatch') {
+      const expected = entry.kind === 'folder' ? 'folder' : 'workspace file';
+      await ui.showWarning(
+        `Project is no longer a ${expected}. Remove it from Workspace Atlas and add it again.`,
+      );
+    }
   };
 
   const addWorkspace = async (): Promise<void> => {
     const selected = (await ui.pickWorkspaceFiles())
       .map(uri => dependencies.fs.canonicalize(uri));
-    if (selected.some(uri => !isWorkspaceFileUri(uri))) {
-      throw new Error('Select a .code-workspace file.');
+    if (selected.some(uri => !isLocalFileUri(uri))) {
+      throw new Error('Select a local .code-workspace file.');
     }
-    for (const uri of selected) await dependencies.registry.upsertManual(uri);
+    const kinds = await Promise.all(selected.map(uri => dependencies.fs.statKind(uri)));
+    if (selected.some((uri, index) => !isWorkspaceFileUri(uri) || kinds[index] !== 'file')) {
+      throw new Error('Select .code-workspace files only.');
+    }
+    for (const uri of selected) await dependencies.registry.upsertManualWorkspace(uri);
     if (selected.length > 0) dependencies.tree.refresh();
+  };
+
+  const addFolder = async (): Promise<void> => {
+    const selected = (await ui.pickFolders())
+      .map(uri => dependencies.fs.canonicalize(uri));
+    if (selected.some(uri => !isLocalFileUri(uri))) {
+      throw new Error('Select a local folder.');
+    }
+    const kinds = await Promise.all(selected.map(uri => dependencies.fs.statKind(uri)));
+    if (kinds.some(kind => kind !== 'directory')) throw new Error('Select folders only.');
+    for (const uri of selected) await dependencies.registry.upsertManualFolder(uri);
+    if (selected.length > 0) dependencies.tree.refresh();
+  };
+
+  const addProject = async (): Promise<void> => {
+    const kind = await ui.pickProjectKind();
+    if (kind === 'workspace') await addWorkspace();
+    if (kind === 'folder') await addFolder();
   };
 
   const refreshAfterSettingsChange = async (): Promise<void> => {
@@ -220,6 +283,7 @@ export function registerWorkspaceCommands(
   const addDiscoveryRoot = async (): Promise<void> => {
     const selected = await ui.pickDiscoveryRoot();
     if (!selected) return;
+    if (!isLocalFileUri(selected)) throw new Error('Select a local discovery root.');
     const canonical = dependencies.fs.canonicalize(selected);
     const configured = roots.configuredRoots()
       .map(root => dependencies.fs.canonicalize(root));
@@ -243,15 +307,19 @@ export function registerWorkspaceCommands(
     const result = await dependencies.coordinator.refresh('manual');
     dependencies.tree.refresh();
     if (result.removed > 0) {
-      const suffix = result.removed === 1 ? 'workspace' : 'workspaces';
+      const suffix = result.removed === 1 ? 'project' : 'projects';
       await ui.showInfo(`Removed ${result.removed} missing ${suffix}.`);
     }
-    if (result.errors.length > 0) {
-      await ui.showWarning(result.errors.map(error => {
+    const warnings = [
+      ...result.scanErrors.map(error => {
         const detail = error.error ?? 'Unknown scan error.';
         return `Unable to scan ${error.rootUri}: ${detail}`;
-      }).join('\n'));
-    }
+      }),
+      ...result.targetAccessErrors.map(error => (
+        `Unable to access ${error.uri}: ${error.error}`
+      )),
+    ];
+    if (warnings.length > 0) await ui.showWarning(warnings.join('\n'));
   };
 
   const rename = async (argument?: EntryArgument): Promise<void> => {
@@ -273,8 +341,31 @@ export function registerWorkspaceCommands(
   const remove = async (argument?: EntryArgument): Promise<void> => {
     const entry = await selectEntry(argument);
     if (!entry) return;
-    await dependencies.registry.removeManual(entry.id);
+    await dependencies.registry.removeProject(entry.id);
     dependencies.tree.refresh();
+  };
+
+  const showExcluded = async (): Promise<void> => {
+    if (dependencies.registry.listExcluded().length === 0) {
+      await ui.showInfo('No excluded workspaces.');
+      return;
+    }
+    await excludedPicker.show({
+      list: () => dependencies.registry.listExcluded(),
+      restore: async id => {
+        const exclusion = dependencies.registry.listExcluded()
+          .find(entry => entry.id === id);
+        if (!exclusion) throw new Error('Workspace is no longer excluded.');
+        const kind = await dependencies.fs.statKind(exclusion.uri);
+        if (kind === 'missing') throw new Error('Workspace file no longer exists.');
+        if (kind !== 'file' || !isWorkspaceFileUri(exclusion.uri)) {
+          throw new Error('Excluded project is no longer a .code-workspace file.');
+        }
+        await dependencies.registry.restoreExcluded(id);
+        dependencies.tree.refresh();
+      },
+      reportError: async error => { await ui.showError(errorMessage(error)); },
+    });
   };
 
   const reveal = async (argument?: EntryArgument): Promise<void> => {
@@ -292,15 +383,18 @@ export function registerWorkspaceCommands(
   ));
 
   return [
-    register(commandIds.switchWorkspace, argument => open('reuse', argument)),
+    register(commandIds.switchProject, argument => open('reuse', argument)),
     register(commandIds.openNewWindow, argument => open('new', argument)),
+    register(commandIds.addProject, addProject),
     register(commandIds.addWorkspace, addWorkspace),
+    register(commandIds.addFolder, addFolder),
     register(commandIds.addDiscoveryRoot, addDiscoveryRoot),
     register(commandIds.removeDiscoveryRoot, removeDiscoveryRoot),
     register(commandIds.refresh, refresh),
     register(commandIds.rename, rename),
     register(commandIds.resetName, resetName),
     register(commandIds.remove, remove),
+    register(commandIds.showExcluded, showExcluded),
     register(commandIds.reveal, reveal),
     register(openCurrentCommandId, argument => open('reuse', argument)),
   ];

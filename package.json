@@ -1,7 +1,7 @@
 {
   "name": "workspace-atlas",
   "displayName": "Workspace Atlas",
-  "description": "Discover, organize, and switch between .code-workspace files.",
+  "description": "Discover, organize, and switch between VS Code workspace files and folders.",
   "version": "0.1.0",
   "preview": true,
   "publisher": "nick",
@@ -16,7 +16,9 @@
     "workspace",
     "switcher",
     "code-workspace",
-    "project manager"
+    "project manager",
+    "folder",
+    "project switcher"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [],
@@ -34,24 +36,32 @@
       "workspaceAtlas": [
         {
           "id": "workspaceAtlas.workspaces",
-          "name": "Workspaces"
+          "name": "Projects"
         }
       ]
     },
     "commands": [
       {
         "command": "workspaceAtlas.switchWorkspace",
-        "title": "Workspace Atlas: Switch Workspace"
+        "title": "Workspace Atlas: Switch Project"
       },
       {
         "command": "workspaceAtlas.openWorkspaceInNewWindow",
-        "title": "Workspace Atlas: Open Workspace in New Window",
+        "title": "Workspace Atlas: Open Project in New Window",
         "icon": "$(empty-window)"
       },
       {
-        "command": "workspaceAtlas.addWorkspace",
-        "title": "Workspace Atlas: Add Workspace...",
+        "command": "workspaceAtlas.addProject",
+        "title": "Workspace Atlas: Add Project...",
         "icon": "$(add)"
+      },
+      {
+        "command": "workspaceAtlas.addWorkspace",
+        "title": "Workspace Atlas: Add Workspace..."
+      },
+      {
+        "command": "workspaceAtlas.addFolder",
+        "title": "Workspace Atlas: Add Folder..."
       },
       {
         "command": "workspaceAtlas.addDiscoveryRoot",
@@ -63,28 +73,34 @@
       },
       {
         "command": "workspaceAtlas.refreshWorkspaces",
-        "title": "Workspace Atlas: Refresh Workspaces",
+        "title": "Workspace Atlas: Refresh Projects",
         "icon": "$(refresh)"
       },
       {
+        "command": "workspaceAtlas.showExcludedWorkspaces",
+        "title": "Workspace Atlas: Show Excluded Workspaces",
+        "icon": "$(eye-closed)"
+      },
+      {
         "command": "workspaceAtlas.renameWorkspace",
-        "title": "Workspace Atlas: Rename Workspace"
+        "title": "Workspace Atlas: Rename Project"
       },
       {
         "command": "workspaceAtlas.resetWorkspaceName",
-        "title": "Workspace Atlas: Reset Workspace Name"
+        "title": "Workspace Atlas: Reset Project Name"
       },
       {
         "command": "workspaceAtlas.removeWorkspace",
-        "title": "Workspace Atlas: Remove Workspace"
+        "title": "Workspace Atlas: Remove from Workspace Atlas",
+        "icon": "$(trash)"
       },
       {
         "command": "workspaceAtlas.revealWorkspaceFile",
-        "title": "Workspace Atlas: Reveal Workspace File"
+        "title": "Workspace Atlas: Reveal in File Manager"
       },
       {
         "command": "workspaceAtlas.openEntryInCurrentWindow",
-        "title": "Open Workspace"
+        "title": "Open Project"
       }
     ],
     "menus": {
@@ -96,7 +112,7 @@
       ],
       "view/title": [
         {
-          "command": "workspaceAtlas.addWorkspace",
+          "command": "workspaceAtlas.addProject",
           "when": "view == workspaceAtlas.workspaces",
           "group": "navigation@1"
         },
@@ -104,6 +120,11 @@
           "command": "workspaceAtlas.refreshWorkspaces",
           "when": "view == workspaceAtlas.workspaces",
           "group": "navigation@2"
+        },
+        {
+          "command": "workspaceAtlas.showExcludedWorkspaces",
+          "when": "view == workspaceAtlas.workspaces",
+          "group": "navigation@3"
         },
         {
           "command": "workspaceAtlas.addDiscoveryRoot",
@@ -123,6 +144,11 @@
           "group": "inline@1"
         },
         {
+          "command": "workspaceAtlas.removeWorkspace",
+          "when": "view == workspaceAtlas.workspaces",
+          "group": "inline@2"
+        },
+        {
           "command": "workspaceAtlas.renameWorkspace",
           "when": "view == workspaceAtlas.workspaces",
           "group": "manage@1"
@@ -134,7 +160,7 @@
         },
         {
           "command": "workspaceAtlas.removeWorkspace",
-          "when": "view == workspaceAtlas.workspaces && viewItem == workspace.manual",
+          "when": "view == workspaceAtlas.workspaces",
           "group": "manage@3"
         },
         {
@@ -147,7 +173,7 @@
     "viewsWelcome": [
       {
         "view": "workspaceAtlas.workspaces",
-        "contents": "No workspaces registered.\n[Add Workspace](command:workspaceAtlas.addWorkspace)\n[Add Discovery Root](command:workspaceAtlas.addDiscoveryRoot)"
+        "contents": "No projects registered.\n[Add Project](command:workspaceAtlas.addProject)\n[Add Discovery Root](command:workspaceAtlas.addDiscoveryRoot)"
       }
     ],
     "configuration": {

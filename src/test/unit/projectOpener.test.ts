@@ -1,30 +1,37 @@
 import { Uri } from 'vscode';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { FileKind, FileSystemPort } from '../../domain/discovery.js';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+import type { FileKind, FileSystemPort, TargetKind } from '../../domain/discovery.js';
+import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
-  WorkspaceRegistry,
+  ProjectRegistry,
+  type ProjectRegistryState,
   type RegistryStorage,
-} from '../../domain/workspaceRegistry.js';
+} from '../../domain/projectRegistry.js';
 import {
-  WorkspaceOpener,
+  ProjectOpener,
   type Clock,
   type CommandExecutor,
-} from '../../platform/workspaceOpener.js';
+} from '../../platform/projectOpener.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
   private blocker: { started(): void; released: Promise<void> } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  async write(entries: readonly WorkspaceEntry[]): Promise<void> {
+  async write(state: ProjectRegistryState): Promise<void> {
     if (this.blocker) {
       const blocker = this.blocker;
       this.blocker = undefined;
       blocker.started();
       await blocker.released;
     }
-    this.value = entries;
+    this.value = {
+      entries: state.entries.map(entry => ({
+        ...entry,
+        discoveredFrom: [...entry.discoveredFrom],
+      })),
+      exclusions: state.exclusions.map(exclusion => ({ ...exclusion })),
+    };
   }
   blockNextWrite(): { started: Promise<void>; release(): void } {
     let markStarted!: () => void;
@@ -37,9 +44,9 @@ class MemoryStorage implements RegistryStorage {
 }
 
 class FakeFileSystem implements FileSystemPort {
-  private readonly existing = new Map<string, boolean>();
+  private readonly kinds = new Map<string, TargetKind>();
 
-  setExists(uri: string, exists: boolean): void { this.existing.set(uri, exists); }
+  setKind(uri: string, kind: TargetKind): void { this.kinds.set(uri, kind); }
   readDirectory(): Promise<readonly [name: string, kind: FileKind][]> {
     return Promise.resolve([]);
   }
@@ -47,7 +54,9 @@ class FakeFileSystem implements FileSystemPort {
     return [baseUri.replace(/\/$/, ''), ...segments].join('/');
   }
   canonicalize(uri: string): string { return uri; }
-  exists(uri: string): Promise<boolean> { return Promise.resolve(this.existing.get(uri) ?? true); }
+  statKind(uri: string): Promise<TargetKind> {
+    return Promise.resolve(this.kinds.get(uri) ?? 'file');
+  }
   parent(uri: string): string { return uri.slice(0, uri.lastIndexOf('/')); }
 }
 
@@ -66,22 +75,23 @@ class FakeClock implements Clock {
   now(): number { return this.value; }
 }
 
-describe('WorkspaceOpener', () => {
+describe('ProjectOpener', () => {
   let fs: FakeFileSystem;
   let commands: FakeCommands;
   let storage: MemoryStorage;
-  let registry: WorkspaceRegistry;
-  let opener: WorkspaceOpener;
-  let entry: WorkspaceEntry;
+  let registry: ProjectRegistry;
+  let opener: ProjectOpener;
+  let entry: ProjectEntry;
 
   beforeEach(async () => {
     fs = new FakeFileSystem();
     commands = new FakeCommands();
     storage = new MemoryStorage();
-    registry = new WorkspaceRegistry(storage);
+    registry = new ProjectRegistry(storage);
     await registry.load();
-    entry = await registry.upsertManual('file:///work/a.code-workspace');
-    opener = new WorkspaceOpener(registry, fs, commands, new FakeClock(123));
+    entry = await registry.upsertManualWorkspace('file:///work/a.code-workspace');
+    fs.setKind(entry.uri, 'file');
+    opener = new ProjectOpener(registry, fs, commands, new FakeClock(123));
   });
 
   it('uses forceReuseWindow for the primary action', async () => {
@@ -101,11 +111,22 @@ describe('WorkspaceOpener', () => {
     ]);
   });
 
+  it('opens a folder in a new window and records its timestamp', async () => {
+    const folder = await registry.upsertManualFolder('file:///work/atlas');
+    fs.setKind(folder.uri, 'directory');
+
+    await expect(opener.open(folder.id, 'new')).resolves.toEqual({ status: 'opened' });
+    expect(commands.calls).toEqual([
+      ['vscode.openFolder', Uri.parse(folder.uri), { forceNewWindow: true }],
+    ]);
+    expect(registry.get(folder.id)?.lastOpenedAt).toBe(123);
+  });
+
   it('removes the entire missing entry before returning a missing result', async () => {
-    const retained = await registry.upsertManual('file:///work/retained.code-workspace');
+    const retained = await registry.upsertManualWorkspace('file:///work/retained.code-workspace');
     await registry.setAlias(entry.id, 'Alpha');
     await registry.markOpened(entry.id, 99);
-    fs.setExists(entry.uri, false);
+    fs.setKind(entry.uri, 'missing');
 
     await expect(opener.open(entry.id, 'reuse')).resolves.toEqual({ status: 'missing' });
 
@@ -114,9 +135,21 @@ describe('WorkspaceOpener', () => {
     expect(commands.calls).toEqual([]);
   });
 
+  it('retains and rejects a project whose filesystem kind changed', async () => {
+    fs.setKind(entry.uri, 'directory');
+
+    await expect(opener.open(entry.id, 'reuse')).resolves.toEqual({
+      status: 'kind-mismatch',
+      expected: 'file',
+      actual: 'directory',
+    });
+    expect(registry.get(entry.id)).toEqual(entry);
+    expect(commands.calls).toEqual([]);
+  });
+
   it('targeted missing cleanup preserves unrelated metadata committed first', async () => {
-    const retained = await registry.upsertManual('file:///work/retained.code-workspace');
-    fs.setExists(entry.uri, false);
+    const retained = await registry.upsertManualWorkspace('file:///work/retained.code-workspace');
+    fs.setKind(entry.uri, 'missing');
     const blocked = storage.blockNextWrite();
     const alias = registry.setAlias(retained.id, 'Fresh Alias');
     await blocked.started;

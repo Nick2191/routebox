@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import type { FileKind, FileSystemPort } from '../../domain/discovery.js';
-import { WorkspaceReconciler } from '../../domain/reconciler.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FileKind, FileSystemPort, TargetKind } from '../../domain/discovery.js';
+import { ProjectReconciler } from '../../domain/reconciler.js';
 import {
-  WorkspaceRegistry,
+  ProjectRegistry,
+  type ProjectRegistryState,
   type RegistryStorage,
-} from '../../domain/workspaceRegistry.js';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+} from '../../domain/projectRegistry.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
@@ -15,14 +15,20 @@ class MemoryStorage implements RegistryStorage {
   } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  async write(entries: readonly WorkspaceEntry[]): Promise<void> {
+  async write(state: ProjectRegistryState): Promise<void> {
     if (this.blocker) {
       const blocker = this.blocker;
       this.blocker = undefined;
       blocker.started();
       await blocker.released;
     }
-    this.value = entries;
+    this.value = {
+      entries: state.entries.map(entry => ({
+        ...entry,
+        discoveredFrom: [...entry.discoveredFrom],
+      })),
+      exclusions: state.exclusions.map(exclusion => ({ ...exclusion })),
+    };
   }
 
   blockNextWrite(): { started: Promise<void>; release(): void } {
@@ -36,9 +42,9 @@ class MemoryStorage implements RegistryStorage {
 }
 
 class FakeFileSystem implements FileSystemPort {
-  private readonly existing = new Map<string, boolean>();
+  private readonly kinds = new Map<string, TargetKind>();
 
-  setExists(uri: string, exists: boolean): void { this.existing.set(uri, exists); }
+  setKind(uri: string, kind: TargetKind): void { this.kinds.set(uri, kind); }
   readDirectory(): Promise<readonly [name: string, kind: FileKind][]> {
     return Promise.resolve([]);
   }
@@ -46,7 +52,9 @@ class FakeFileSystem implements FileSystemPort {
     return [baseUri.replace(/\/$/, ''), ...segments].join('/');
   }
   canonicalize(uri: string): string { return uri; }
-  exists(uri: string): Promise<boolean> { return Promise.resolve(this.existing.get(uri) ?? true); }
+  statKind(uri: string): Promise<TargetKind> {
+    return Promise.resolve(this.kinds.get(uri) ?? 'file');
+  }
   parent(uri: string): string { return uri.slice(0, uri.lastIndexOf('/')); }
 }
 
@@ -57,34 +65,38 @@ class BlockingFileSystem extends FakeFileSystem {
   private readonly released = new Promise<void>(resolve => { this.releaseChecks = resolve; });
   private hasStarted = false;
 
-  override async exists(uri: string): Promise<boolean> {
+  private async waitForRelease(): Promise<void> {
     if (!this.hasStarted) {
       this.hasStarted = true;
       this.markStarted();
     }
     await this.released;
-    return super.exists(uri);
+  }
+
+  override async statKind(uri: string): Promise<TargetKind> {
+    await this.waitForRelease();
+    return super.statKind(uri);
   }
 
   release(): void { this.releaseChecks(); }
 }
 
-describe('WorkspaceReconciler', () => {
+describe('ProjectReconciler', () => {
   let fs: FakeFileSystem;
   let storage: MemoryStorage;
-  let registry: WorkspaceRegistry;
-  let reconciler: WorkspaceReconciler;
+  let registry: ProjectRegistry;
+  let reconciler: ProjectReconciler;
 
   beforeEach(async () => {
     fs = new FakeFileSystem();
     storage = new MemoryStorage();
-    registry = new WorkspaceRegistry(storage);
+    registry = new ProjectRegistry(storage);
     await registry.load();
-    reconciler = new WorkspaceReconciler(registry, fs);
+    reconciler = new ProjectReconciler(registry, fs);
   });
 
   it('merges discoveries without losing manual metadata', async () => {
-    const manual = await registry.upsertManual('file:///root/a.code-workspace');
+    const manual = await registry.upsertManualWorkspace('file:///root/a.code-workspace');
     await registry.setAlias(manual.id, 'Alpha');
     await registry.markOpened(manual.id, 123);
 
@@ -97,11 +109,49 @@ describe('WorkspaceReconciler', () => {
     expect(registry.get(manual.id)).toEqual({
       id: manual.id,
       uri: manual.uri,
+      kind: 'workspace',
       alias: 'Alpha',
       lastOpenedAt: 123,
       manuallyRegistered: true,
       discoveredFrom: ['configured:file:///root'],
     });
+  });
+
+  it('creates discovered entries as workspaces and never adds provenance to folders', async () => {
+    const folder = await registry.upsertManualFolder('file:///work/folder.code-workspace');
+    await reconciler.reconcileSource('configured:file:///work', {
+      rootUri: 'file:///work',
+      workspaceUris: [folder.uri, 'file:///work/real.code-workspace'],
+      status: 'ok',
+    });
+
+    expect(registry.get(folder.id)).toEqual(folder);
+    expect(registry.get('file:///work/real.code-workspace')).toMatchObject({
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///work'],
+    });
+  });
+
+  it('keeps an excluded workspace out of configured-source discovery', async () => {
+    const uri = 'file:///root/excluded.code-workspace';
+    await registry.replace([{
+      id: uri,
+      uri,
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///root'],
+    }]);
+    await registry.removeProject(uri);
+
+    await reconciler.reconcileSource('configured:file:///root', {
+      rootUri: 'file:///root',
+      status: 'ok',
+      workspaceUris: [uri],
+    });
+
+    expect(registry.get(uri)).toBeUndefined();
+    expect(registry.isExcluded(uri)).toBe(true);
   });
 
   it('replaces only the scanned source provenance', async () => {
@@ -126,13 +176,14 @@ describe('WorkspaceReconciler', () => {
     expect(registry.get(uri)).toEqual({
       id: uri,
       uri,
+      kind: 'workspace',
       manuallyRegistered: false,
       discoveredFrom: ['current:file:///root/a'],
     });
   });
 
   it('keeps a manual entry when a source stops discovering it', async () => {
-    const manual = await registry.upsertManual('file:///root/a.code-workspace');
+    const manual = await registry.upsertManualWorkspace('file:///root/a.code-workspace');
     await reconciler.reconcileSource('configured:file:///root', {
       rootUri: 'file:///root',
       status: 'ok',
@@ -148,6 +199,7 @@ describe('WorkspaceReconciler', () => {
     expect(registry.get(manual.id)).toEqual({
       id: manual.id,
       uri: manual.uri,
+      kind: 'workspace',
       manuallyRegistered: true,
       discoveredFrom: [],
     });
@@ -203,7 +255,7 @@ describe('WorkspaceReconciler', () => {
   });
 
   it('preserves manual entries when their source is retired', async () => {
-    const manual = await registry.upsertManual('file:///root/a.code-workspace');
+    const manual = await registry.upsertManualWorkspace('file:///root/a.code-workspace');
     await registry.setAlias(manual.id, 'Alpha');
     await reconciler.reconcileSource('configured:file:///root', {
       rootUri: 'file:///root',
@@ -216,6 +268,7 @@ describe('WorkspaceReconciler', () => {
     expect(registry.get(manual.id)).toEqual({
       id: manual.id,
       uri: manual.uri,
+      kind: 'workspace',
       alias: 'Alpha',
       manuallyRegistered: true,
       discoveredFrom: [],
@@ -223,37 +276,94 @@ describe('WorkspaceReconciler', () => {
   });
 
   it('removes only confirmed missing entries, including manual ones', async () => {
-    const missing = await registry.upsertManual('file:///root/missing.code-workspace');
+    const missing = await registry.upsertManualWorkspace('file:///root/missing.code-workspace');
     const existingUri = 'file:///root/existing.code-workspace';
     await reconciler.reconcileSource('configured:file:///root', {
       rootUri: 'file:///root',
       status: 'ok',
       workspaceUris: [existingUri],
     });
-    fs.setExists(missing.uri, false);
-    fs.setExists(existingUri, true);
+    fs.setKind(missing.uri, 'missing');
+    fs.setKind(existingUri, 'file');
 
-    await expect(reconciler.removeMissing()).resolves.toEqual({ removed: 1 });
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [],
+    });
 
     expect(registry.list()).toEqual([{
       id: existingUri,
       uri: existingUri,
+      kind: 'workspace',
       manuallyRegistered: false,
       discoveredFrom: ['configured:file:///root'],
     }]);
   });
 
+  it('removes a missing active entry without excluding it', async () => {
+    const uri = 'file:///root/missing.code-workspace';
+    await registry.replace([{
+      id: uri,
+      uri,
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///root'],
+    }]);
+    fs.setKind(uri, 'missing');
+
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [],
+    });
+
+    expect(registry.get(uri)).toBeUndefined();
+    expect(registry.isExcluded(uri)).toBe(false);
+  });
+
+  it('removes confirmed missing entries while retaining and reporting inaccessible targets', async () => {
+    const missing = await registry.upsertManualWorkspace('file:///root/missing.code-workspace');
+    const inaccessible = await registry.upsertManualFolder('file:///root/inaccessible');
+    fs.setKind(missing.uri, 'missing');
+    const statKind = fs.statKind.bind(fs);
+    vi.spyOn(fs, 'statKind').mockImplementation(uri => (
+      uri === inaccessible.uri
+        ? Promise.reject(new Error('Permission denied'))
+        : statKind(uri)
+    ));
+
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [{ uri: inaccessible.uri, error: 'Permission denied' }],
+    });
+    expect(registry.get(missing.id)).toBeUndefined();
+    expect(registry.get(inaccessible.id)).toEqual(inaccessible);
+  });
+
+  it('removes missing folders but retains entries whose kind changed', async () => {
+    const missing = await registry.upsertManualFolder('file:///work/missing');
+    const changed = await registry.upsertManualFolder('file:///work/changed');
+    fs.setKind(missing.uri, 'missing');
+    fs.setKind(changed.uri, 'file');
+
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [],
+    });
+    expect(registry.get(missing.id)).toBeUndefined();
+    expect(registry.get(changed.id)).toEqual(changed);
+  });
+
   it('applies confirmed deletions to fresh registry state after pending stats', async () => {
     const blockingFs = new BlockingFileSystem();
-    reconciler = new WorkspaceReconciler(registry, blockingFs);
-    const missing = await registry.upsertManual('file:///root/missing.code-workspace');
-    const retained = await registry.upsertManual('file:///root/retained.code-workspace');
-    blockingFs.setExists(missing.uri, false);
-    blockingFs.setExists(retained.uri, true);
+    reconciler = new ProjectReconciler(registry, blockingFs);
+    const missing = await registry.upsertManualWorkspace('file:///root/missing.code-workspace');
+    const retained = await registry.upsertManualWorkspace('file:///root/retained.code-workspace');
+    blockingFs.setKind(missing.uri, 'missing');
+    blockingFs.setKind(retained.uri, 'file');
     const cleanup = reconciler.removeMissing();
     await blockingFs.started;
 
-    const added = await registry.upsertManual('file:///root/added.code-workspace');
+    const added = await registry.upsertManualWorkspace('file:///root/added.code-workspace');
     await registry.setAlias(retained.id, 'Retained Alias');
     await reconciler.reconcileSource('current:file:///root/project', {
       rootUri: 'file:///root/project',
@@ -262,7 +372,7 @@ describe('WorkspaceReconciler', () => {
     });
     blockingFs.release();
 
-    await expect(cleanup).resolves.toEqual({ removed: 1 });
+    await expect(cleanup).resolves.toEqual({ removed: 1, targetAccessErrors: [] });
     expect(registry.get(missing.id)).toBeUndefined();
     expect(registry.get(retained.id)).toMatchObject({
       alias: 'Retained Alias',
@@ -304,7 +414,7 @@ describe('WorkspaceReconciler', () => {
       status: 'ok',
     });
     const blocked = storage.blockNextWrite();
-    const manualRegistration = registry.upsertManual(uri);
+    const manualRegistration = registry.upsertManualWorkspace(uri);
     await blocked.started;
 
     const retirement = reconciler.retireSource('configured:file:///root');
@@ -314,6 +424,7 @@ describe('WorkspaceReconciler', () => {
     expect(registry.get(uri)).toEqual({
       id: uri,
       uri,
+      kind: 'workspace',
       manuallyRegistered: true,
       discoveredFrom: [],
     });

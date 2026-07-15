@@ -1,12 +1,13 @@
-import { isWorkspaceFileUri } from './workspaceEntry.js';
+import { isWorkspaceFileUri } from './projectEntry.js';
 
 export type FileKind = 'file' | 'directory' | 'other';
+export type TargetKind = FileKind | 'missing';
 
 export interface FileSystemPort {
   readDirectory(uri: string): Promise<readonly [name: string, kind: FileKind][]>;
   joinPath(baseUri: string, ...segments: string[]): string;
   canonicalize(uri: string): string;
-  exists(uri: string): Promise<boolean>;
+  statKind(uri: string): Promise<TargetKind>;
   parent(uri: string): string;
 }
 

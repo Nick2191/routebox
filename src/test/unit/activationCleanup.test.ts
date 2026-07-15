@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { activationCleanupMessage } from '../../extension.js';
+import {
+  activationCleanupMessage,
+  registryLoadWarning,
+} from '../../extension.js';
 import type { RefreshReason } from '../../platform/discoveryCoordinator.js';
 
 describe('activation cleanup notification', () => {
   it.each([
-    [1, 'Removed 1 missing workspace.'],
-    [2, 'Removed 2 missing workspaces.'],
-  ])('formats an aggregate activation message for %i removals', (removed, expected) => {
+    [1, 'Removed 1 missing project.'],
+    [2, 'Removed 2 missing projects.'],
+  ])('formats project cleanup for %i removals', (removed, expected) => {
     expect(activationCleanupMessage('activation', removed)).toBe(expected);
   });
 
@@ -22,5 +25,20 @@ describe('activation cleanup notification', () => {
 
   it('does not notify when activation removes nothing', () => {
     expect(activationCleanupMessage('activation', 0)).toBeUndefined();
+  });
+
+  it('formats discarded registry records without mentioning migration', () => {
+    expect(registryLoadWarning({ discarded: 2, reset: false, migrated: 1 }))
+      .toBe('Workspace Atlas ignored 2 invalid saved projects.');
+  });
+
+  it('reports a registry reset', () => {
+    expect(registryLoadWarning({ discarded: 0, reset: true, migrated: 0 }))
+      .toBe('Workspace Atlas could not read its local registry and started with an empty list.');
+  });
+
+  it('keeps migration-only registry loads silent', () => {
+    expect(registryLoadWarning({ discarded: 0, reset: false, migrated: 1 }))
+      .toBeUndefined();
   });
 });

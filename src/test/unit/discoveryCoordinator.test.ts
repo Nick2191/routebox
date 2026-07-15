@@ -1,9 +1,10 @@
 import { homedir } from 'node:os';
 import { dirname } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FileSystemError, Uri } from 'vscode';
+import { Uri } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../../domain/discovery.js';
-import type { WorkspaceEntry, WorkspaceSourceId } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry, WorkspaceSourceId } from '../../domain/projectEntry.js';
+import type { RemoveMissingResult } from '../../domain/reconciler.js';
 import {
   DiscoveryCoordinator,
   type DiscoveryCoordinatorOptions,
@@ -25,7 +26,7 @@ class FakeFileSystem implements FileSystemPort {
     return [baseUri, ...segments].join('/');
   }
   canonicalize(uri: string): string { return this.canonical.get(uri) ?? uri; }
-  exists(): Promise<boolean> { return Promise.resolve(true); }
+  statKind(): Promise<'file'> { return Promise.resolve('file'); }
   parent(uri: string): string {
     const slash = uri.lastIndexOf('/');
     return slash <= 'file://'.length ? 'file:///' : uri.slice(0, slash);
@@ -69,9 +70,9 @@ class BlockingDiscovery extends FakeDiscovery {
 }
 
 class FakeRegistry {
-  readonly entries: WorkspaceEntry[] = [];
+  readonly entries: ProjectEntry[] = [];
 
-  list(): WorkspaceEntry[] {
+  list(): ProjectEntry[] {
     return this.entries.map(entry => ({ ...entry, discoveredFrom: [...entry.discoveredFrom] }));
   }
 
@@ -79,6 +80,7 @@ class FakeRegistry {
     this.entries.push({
       id: `file:///${this.entries.length}.code-workspace`,
       uri: `file:///${this.entries.length}.code-workspace`,
+      kind: 'workspace',
       manuallyRegistered: false,
       discoveredFrom: [source],
     });
@@ -91,6 +93,7 @@ class FakeReconciler {
   removed = 0;
   removeMissingCount = 0;
   removeMissingError: Error | undefined;
+  targetAccessErrors: Array<{ uri: string; error: string }> = [];
 
   constructor(private readonly registry: FakeRegistry) {}
 
@@ -106,10 +109,13 @@ class FakeReconciler {
     }
     return Promise.resolve();
   }
-  removeMissing(): Promise<{ removed: number }> {
+  removeMissing(): Promise<RemoveMissingResult> {
     this.removeMissingCount += 1;
     if (this.removeMissingError) return Promise.reject(this.removeMissingError);
-    return Promise.resolve({ removed: this.removed });
+    return Promise.resolve({
+      removed: this.removed,
+      targetAccessErrors: this.targetAccessErrors,
+    });
   }
 }
 
@@ -218,6 +224,17 @@ describe('DiscoveryCoordinator', () => {
     await coordinator.refresh('manual');
 
     expect(discovery.scanned).toEqual(['file:///configured', 'file:///worktrees']);
+  });
+
+  it('ignores configured and current non-local roots for scanning and watching', async () => {
+    const { coordinator, current, discovery, settings, watchedRoots } = createHarness();
+    settings.roots = ['vscode-remote://ssh-remote+host/configured'];
+    current.workspaceFile = 'vscode-remote://ssh-remote+host/worktrees/BOIS-1/project.code-workspace';
+
+    await coordinator.refresh('activation');
+
+    expect(discovery.scanned).toEqual([]);
+    expect(watchedRoots).toEqual([]);
   });
 
   it('canonicalizes and deduplicates configured roots for scanning, sources, and removal', async () => {
@@ -342,14 +359,35 @@ describe('DiscoveryCoordinator', () => {
 
     expect(result).toEqual({
       removed: 3,
-      errors: [{
+      scanErrors: [{
         rootUri: 'file:///unreadable',
         workspaceUris: [],
         status: 'error',
         error: 'Cannot scan file:///unreadable',
       }],
+      targetAccessErrors: [],
     });
     expect(reconciler.removeMissingCount).toBe(1);
+  });
+
+  it('returns target-access failures without rejecting an activation refresh', async () => {
+    const onDidRefresh = vi.fn();
+    const { coordinator, reconciler } = createHarness(
+      new FakeDiscovery(),
+      false,
+      onDidRefresh,
+    );
+    reconciler.targetAccessErrors = [{
+      uri: 'file:///inaccessible.code-workspace',
+      error: 'Permission denied',
+    }];
+
+    await expect(coordinator.refresh('activation')).resolves.toEqual({
+      removed: 0,
+      scanErrors: [],
+      targetAccessErrors: reconciler.targetAccessErrors,
+    });
+    expect(onDidRefresh).toHaveBeenCalledOnce();
   });
 
   it('preserves inaccessible entries and scan errors when missing-file cleanup is denied', async () => {
@@ -358,16 +396,20 @@ describe('DiscoveryCoordinator', () => {
     registry.seedDiscoveredSource('configured:file:///inaccessible');
     const before = registry.list();
     discovery.failures.add('file:///inaccessible');
-    reconciler.removeMissingError = FileSystemError.NoPermissions();
+    reconciler.targetAccessErrors = [{
+      uri: 'file:///inaccessible.code-workspace',
+      error: 'No permissions',
+    }];
 
     await expect(coordinator.refresh('manual')).resolves.toEqual({
       removed: 0,
-      errors: [{
+      scanErrors: [{
         rootUri: 'file:///inaccessible',
         workspaceUris: [],
         status: 'error',
         error: 'Cannot scan file:///inaccessible',
       }],
+      targetAccessErrors: reconciler.targetAccessErrors,
     });
     expect(registry.list()).toEqual(before);
     expect(reconciler.removeMissingCount).toBe(1);
@@ -459,7 +501,7 @@ describe('DiscoveryCoordinator', () => {
     const treeChange = vi.fn((reason: RefreshReason, result: RefreshResult): void => {
       expect(state.reconciler?.reconciled).toHaveLength(1);
       expect(reason).toBe('watcher');
-      expect(result).toEqual({ removed: 0, errors: [] });
+      expect(result).toEqual({ removed: 0, scanErrors: [], targetAccessErrors: [] });
     });
     const harness = createHarness(new FakeDiscovery(), false, treeChange);
     state.reconciler = harness.reconciler;

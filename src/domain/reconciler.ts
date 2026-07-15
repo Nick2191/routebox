@@ -1,10 +1,20 @@
 import type { DiscoveryResult, FileSystemPort } from './discovery.js';
-import type { WorkspaceSourceId } from './workspaceEntry.js';
-import type { WorkspaceRegistry } from './workspaceRegistry.js';
+import type { WorkspaceSourceId } from './projectEntry.js';
+import type { ProjectRegistry } from './projectRegistry.js';
 
-export class WorkspaceReconciler {
+export interface TargetAccessError {
+  uri: string;
+  error: string;
+}
+
+export interface RemoveMissingResult {
+  removed: number;
+  targetAccessErrors: TargetAccessError[];
+}
+
+export class ProjectReconciler {
   constructor(
-    private readonly registry: WorkspaceRegistry,
+    private readonly registry: ProjectRegistry,
     private readonly fs: FileSystemPort,
   ) {}
 
@@ -13,6 +23,7 @@ export class WorkspaceReconciler {
     const discovered = new Set(result.workspaceUris);
     await this.registry.updateEntries(entries => {
       for (const entry of entries.values()) {
+        if (entry.kind !== 'workspace') continue;
         const sources = entry.discoveredFrom.filter(value => value !== source);
         if (discovered.has(entry.uri)) sources.push(source);
         entry.discoveredFrom = [...new Set(sources)];
@@ -22,10 +33,11 @@ export class WorkspaceReconciler {
       }
 
       for (const uri of discovered) {
-        if (entries.has(uri)) continue;
+        if (entries.has(uri) || this.registry.isExcluded(uri)) continue;
         entries.set(uri, {
           id: uri,
           uri,
+          kind: 'workspace',
           manuallyRegistered: false,
           discoveredFrom: [source],
         });
@@ -36,6 +48,7 @@ export class WorkspaceReconciler {
   async retireSource(source: WorkspaceSourceId): Promise<void> {
     await this.registry.updateEntries(entries => {
       for (const entry of entries.values()) {
+        if (entry.kind !== 'workspace') continue;
         entry.discoveredFrom = entry.discoveredFrom.filter(value => value !== source);
         if (!entry.manuallyRegistered && entry.discoveredFrom.length === 0) {
           entries.delete(entry.id);
@@ -44,15 +57,36 @@ export class WorkspaceReconciler {
     });
   }
 
-  async removeMissing(): Promise<{ removed: number }> {
+  async removeMissing(): Promise<RemoveMissingResult> {
     const current = this.registry.list();
-    const checks = await Promise.all(current.map(async entry => [
-      entry,
-      await this.fs.exists(entry.uri),
-    ] as const));
+    const checks = await Promise.all(current.map(async entry => {
+      try {
+        return {
+          status: 'ok',
+          entry,
+          kind: await this.fs.statKind(entry.uri),
+        } as const;
+      } catch (error) {
+        return {
+          status: 'error',
+          entry,
+          targetAccessError: {
+            uri: entry.uri,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        } as const;
+      }
+    }));
     const missingIds = checks
-      .filter(([, exists]) => !exists)
-      .map(([entry]) => entry.id);
-    return { removed: await this.registry.remove(missingIds) };
+      .filter(check => check.status === 'ok' && check.kind === 'missing')
+      .map(check => check.entry.id);
+    const targetAccessErrors = checks.reduce<TargetAccessError[]>((errors, check) => {
+      if (check.status === 'error') errors.push(check.targetAccessError);
+      return errors;
+    }, []);
+    return {
+      removed: await this.registry.remove(missingIds),
+      targetAccessErrors,
+    };
   }
 }

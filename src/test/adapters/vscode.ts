@@ -37,6 +37,8 @@ export interface Disposable { dispose(): void }
 
 export class EventEmitter<T> implements Disposable {
   private readonly listeners = new Set<(value: T) => unknown>();
+  get listenerCount(): number { return this.listeners.size; }
+
   readonly event = (listener: (value: T) => unknown): Disposable => {
     this.listeners.add(listener);
     return { dispose: (): void => { this.listeners.delete(listener); } };
@@ -55,8 +57,111 @@ export enum TreeItemCollapsibleState {
   Expanded = 2,
 }
 
-export class ThemeIcon {
+export class ThemeColor {
   constructor(readonly id: string) {}
+}
+
+export class ThemeIcon {
+  constructor(readonly id: string, readonly color?: ThemeColor) {}
+}
+
+export type IconPath = URI | ThemeIcon | { light: URI; dark: URI };
+
+export interface QuickInputButton {
+  iconPath: IconPath;
+  tooltip?: string;
+}
+
+export type QuickPickItemButton = QuickInputButton;
+
+export interface QuickPickItem {
+  label: string;
+  description?: string;
+  detail?: string;
+  buttons?: readonly QuickInputButton[];
+}
+
+export interface QuickPickItemButtonEvent<T extends QuickPickItem> {
+  item: T;
+  button: QuickPickItemButton;
+}
+
+export interface QuickPick<T extends QuickPickItem> extends Disposable {
+  items: readonly T[];
+  selectedItems: readonly T[];
+  placeholder?: string;
+  matchOnDescription: boolean;
+  matchOnDetail: boolean;
+  onDidAccept(listener: () => unknown): Disposable;
+  onDidTriggerItemButton(
+    listener: (event: QuickPickItemButtonEvent<T>) => unknown,
+  ): Disposable;
+  onDidHide(listener: () => unknown): Disposable;
+  show(): void;
+  hide(): void;
+}
+
+export class TestQuickPick<T extends QuickPickItem> implements QuickPick<T> {
+  private currentItems: readonly T[] = [];
+  selectedItems: readonly T[] = [];
+  placeholder?: string;
+  matchOnDescription = false;
+  matchOnDetail = false;
+  visible = false;
+  disposed = false;
+  postDisposalTouches = 0;
+  private readonly acceptEmitter = new EventEmitter<void>();
+  private readonly buttonEmitter = new EventEmitter<QuickPickItemButtonEvent<T>>();
+  private readonly hideEmitter = new EventEmitter<void>();
+
+  readonly onDidAccept = this.acceptEmitter.event;
+  readonly onDidTriggerItemButton = this.buttonEmitter.event;
+  readonly onDidHide = this.hideEmitter.event;
+
+  get items(): readonly T[] { return this.currentItems; }
+
+  set items(items: readonly T[]) {
+    if (this.disposed) {
+      this.postDisposalTouches += 1;
+      throw new Error('Quick Pick items changed after disposal');
+    }
+    this.currentItems = items;
+  }
+
+  get listenerCount(): number {
+    return this.acceptEmitter.listenerCount
+      + this.buttonEmitter.listenerCount
+      + this.hideEmitter.listenerCount;
+  }
+
+  show(): void { this.visible = true; }
+
+  hide(): void {
+    if (this.disposed) {
+      this.postDisposalTouches += 1;
+      throw new Error('Quick Pick hidden after disposal');
+    }
+    if (!this.visible) return;
+    this.visible = false;
+    this.hideEmitter.fire();
+  }
+
+  accept(item?: T): void {
+    this.selectedItems = item ? [item] : [];
+    this.acceptEmitter.fire();
+  }
+
+  triggerItemButton(item: T, button: QuickPickItemButton): void {
+    this.buttonEmitter.fire({ item, button });
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.visible = false;
+    this.acceptEmitter.dispose();
+    this.buttonEmitter.dispose();
+    this.hideEmitter.dispose();
+  }
 }
 
 export class MarkdownString {
@@ -207,6 +312,7 @@ let quickPick = <T>(items: readonly T[], options?: QuickPickOptions): Promise<T 
   void options;
   return Promise.resolve(undefined);
 };
+let createQuickPick = (): QuickPick<QuickPickItem> => new TestQuickPick();
 
 export function setOpenDialog(
   value: (options: OpenDialogOptions) => Promise<URI[] | undefined>,
@@ -220,12 +326,21 @@ export function setQuickPick(
   quickPick = value;
 }
 
+export function setCreateQuickPick<T extends QuickPickItem>(
+  value: () => QuickPick<T>,
+): void {
+  createQuickPick = value;
+}
+
 export const window = {
   showOpenDialog(options: OpenDialogOptions): Promise<URI[] | undefined> {
     return openDialog(options);
   },
   showQuickPick<T>(items: readonly T[], options?: QuickPickOptions): Promise<T | undefined> {
     return quickPick(items, options);
+  },
+  createQuickPick<T extends QuickPickItem>(): QuickPick<T> {
+    return createQuickPick() as QuickPick<T>;
   },
   showInputBox(options?: InputBoxOptions): Promise<string | undefined> {
     void options;
