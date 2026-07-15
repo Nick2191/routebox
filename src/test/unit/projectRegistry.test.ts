@@ -106,8 +106,17 @@ describe('ProjectRegistry', () => {
     expect(registry.get(saved.id)?.manuallyRegistered).toBe(false);
   });
 
-  it('unregisters a manual-only project without excluding it', async () => {
+  it('unregisters a manual-only folder without excluding it', async () => {
     const entry = await registry.upsertManualFolder('file:///work/folder');
+
+    await expect(registry.removeProject(entry.id)).resolves.toBe('removed');
+
+    expect(registry.list()).toEqual([]);
+    expect(registry.listExcluded()).toEqual([]);
+  });
+
+  it('unregisters a manual-only workspace without excluding it', async () => {
+    const entry = await registry.upsertManualWorkspace('file:///work/a.code-workspace');
 
     await expect(registry.removeProject(entry.id)).resolves.toBe('removed');
 
@@ -424,6 +433,26 @@ describe('ProjectRegistry', () => {
       migrated: 0,
     });
     expect(registry.listExcluded()).toEqual([valid]);
+  });
+
+  it('discards a persisted exclusion whose id does not match its canonical URI', async () => {
+    storage.value = {
+      entries: [],
+      exclusions: [{
+        id: 'bogus',
+        uri: 'file:///work/a.code-workspace',
+        kind: 'workspace',
+      }],
+    };
+    registry = new ProjectRegistry(storage);
+
+    await expect(registry.load()).resolves.toEqual({
+      discarded: 1,
+      reset: false,
+      migrated: 0,
+    });
+    expect(registry.listExcluded()).toEqual([]);
+    expect(registry.isExcluded('file:///work/a.code-workspace')).toBe(false);
   });
 
   it('rolls back memory when manual registration persistence fails', async () => {

@@ -62,6 +62,7 @@ function normalizeExclusion(value: unknown): ExcludedWorkspace | undefined {
   const item = value as Partial<ExcludedWorkspace>;
   const valid = typeof item.id === 'string'
     && typeof item.uri === 'string'
+    && item.id === item.uri
     && item.kind === 'workspace'
     && (item.alias === undefined || typeof item.alias === 'string')
     && (item.lastOpenedAt === undefined || typeof item.lastOpenedAt === 'number')
