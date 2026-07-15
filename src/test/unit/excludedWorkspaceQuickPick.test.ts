@@ -43,10 +43,11 @@ describe('buildExcludedWorkspaceQuickPickItems', () => {
 
     expect(item).toMatchObject({
       label: '$(file-code) Atlas Alpha',
-      detail: Uri.parse(entry.uri).fsPath,
+      description: Uri.parse(entry.uri).fsPath,
       exclusion: entry,
       buttons: [restoreButton],
     });
+    expect(item?.detail).toBeUndefined();
   });
 
   it('uses workspace filenames when exclusions have no aliases', () => {
@@ -88,6 +89,8 @@ describe('VscodeExcludedWorkspacePicker', () => {
     const reportError = vi.fn(() => Promise.resolve());
 
     const shown = new VscodeExcludedWorkspacePicker().show({ list, restore, reportError });
+    expect(picker.matchOnDescription).toBe(true);
+    expect(picker.matchOnDetail).toBe(false);
     const item = picker.items[0];
     expect(item).toBeDefined();
     if (!item) throw new Error('Expected an excluded workspace item.');

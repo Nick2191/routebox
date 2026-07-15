@@ -90,6 +90,7 @@ export interface QuickPick<T extends QuickPickItem> extends Disposable {
   items: readonly T[];
   selectedItems: readonly T[];
   placeholder?: string;
+  matchOnDescription: boolean;
   matchOnDetail: boolean;
   onDidAccept(listener: () => unknown): Disposable;
   onDidTriggerItemButton(
@@ -104,6 +105,7 @@ export class TestQuickPick<T extends QuickPickItem> implements QuickPick<T> {
   private currentItems: readonly T[] = [];
   selectedItems: readonly T[] = [];
   placeholder?: string;
+  matchOnDescription = false;
   matchOnDetail = false;
   visible = false;
   disposed = false;

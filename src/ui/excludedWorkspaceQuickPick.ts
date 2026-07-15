@@ -36,7 +36,7 @@ export function buildExcludedWorkspaceQuickPickItems(
     }))
     .map(exclusion => ({
       label: `$(file-code) ${projectLabel(exclusion)}`,
-      detail: Uri.parse(exclusion.uri).fsPath,
+      description: Uri.parse(exclusion.uri).fsPath,
       exclusion,
       buttons: [restoreButton],
     }));
@@ -50,7 +50,7 @@ export class VscodeExcludedWorkspacePicker implements ExcludedWorkspacePicker {
       tooltip: 'Restore Workspace',
     };
     quickPick.placeholder = 'Select an excluded workspace to restore';
-    quickPick.matchOnDetail = true;
+    quickPick.matchOnDescription = true;
     quickPick.items = buildExcludedWorkspaceQuickPickItems(options.list(), restoreButton);
 
     await new Promise<void>(resolve => {
