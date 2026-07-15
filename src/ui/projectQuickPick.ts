@@ -16,7 +16,7 @@ export function buildProjectQuickPickItems(
   return sortProjectEntries(entries, currentUri).map(entry => {
     const current = entry.uri === currentUri;
     const type = entry.kind === 'folder' ? 'Folder' : 'Workspace';
-    const icon = entry.kind === 'folder' ? 'folder' : 'window';
+    const icon = entry.kind === 'folder' ? 'folder-opened' : 'file-code';
     return {
       label: `$(${icon}) ${projectLabel(entry)}`,
       description: `${type}${current ? ' · Current' : ''}`,

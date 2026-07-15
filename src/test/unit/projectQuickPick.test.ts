@@ -26,13 +26,13 @@ describe('buildProjectQuickPickItems', () => {
 
     expect(buildProjectQuickPickItems([folder, workspace], folder.uri)).toEqual([
       expect.objectContaining({
-        label: '$(folder) personal',
+        label: '$(folder-opened) personal',
         description: 'Folder · Current',
         detail: Uri.parse(folder.uri).fsPath,
         entry: folder,
       }),
       expect.objectContaining({
-        label: '$(window) Atlas',
+        label: '$(file-code) Atlas',
         description: 'Workspace',
         detail: Uri.parse(workspace.uri).fsPath,
         entry: workspace,
@@ -46,11 +46,11 @@ describe('buildProjectQuickPickItems', () => {
 
     expect(buildProjectQuickPickItems([workspace, folder])).toEqual([
       expect.objectContaining({
-        label: '$(folder) My Folder',
+        label: '$(folder-opened) My Folder',
         description: 'Folder',
       }),
       expect.objectContaining({
-        label: '$(window) My Workspace',
+        label: '$(file-code) My Workspace',
         description: 'Workspace',
       }),
     ]);

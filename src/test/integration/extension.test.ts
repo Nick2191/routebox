@@ -44,7 +44,7 @@ suite('Workspace Atlas extension', () => {
       { command: 'workspaceAtlas.refreshWorkspaces', title: 'Workspace Atlas: Refresh Projects', icon: '$(refresh)' },
       { command: 'workspaceAtlas.renameWorkspace', title: 'Workspace Atlas: Rename Project' },
       { command: 'workspaceAtlas.resetWorkspaceName', title: 'Workspace Atlas: Reset Project Name' },
-      { command: 'workspaceAtlas.removeWorkspace', title: 'Workspace Atlas: Remove from Workspace Atlas' },
+      { command: 'workspaceAtlas.removeWorkspace', title: 'Workspace Atlas: Remove from Workspace Atlas', icon: '$(trash)' },
       { command: 'workspaceAtlas.revealWorkspaceFile', title: 'Workspace Atlas: Reveal in File Manager' },
       { command: 'workspaceAtlas.openEntryInCurrentWindow', title: 'Open Project' },
     ]);
@@ -65,9 +65,10 @@ suite('Workspace Atlas extension', () => {
     ]);
     assert.deepEqual(menus['view/item/context'], [
       { command: 'workspaceAtlas.openWorkspaceInNewWindow', when: 'view == workspaceAtlas.workspaces', group: 'inline@1' },
+      { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'inline@2' },
       { command: 'workspaceAtlas.renameWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'manage@1' },
       { command: 'workspaceAtlas.resetWorkspaceName', when: 'view == workspaceAtlas.workspaces', group: 'manage@2' },
-      { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces && viewItem == project.manual', group: 'manage@3' },
+      { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'manage@3' },
       { command: 'workspaceAtlas.revealWorkspaceFile', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
     ]);
     assert.deepEqual(contributes.viewsWelcome, [{

@@ -2,6 +2,7 @@ import { posix } from 'node:path';
 import {
   EventEmitter,
   MarkdownString,
+  ThemeColor,
   ThemeIcon,
   TreeItem,
   TreeItemCollapsibleState,
@@ -26,7 +27,11 @@ export class ProjectTreeItem extends TreeItem {
     const originalName = posix.basename(uri.path);
 
     this.description = current ? 'Current' : undefined;
-    this.iconPath = new ThemeIcon(entry.kind === 'folder' ? 'folder' : 'window');
+    const iconId = entry.kind === 'folder' ? 'folder-opened' : 'file-code';
+    this.iconPath = new ThemeIcon(
+      iconId,
+      current ? new ThemeColor('charts.blue') : undefined,
+    );
     this.contextValue = entry.manuallyRegistered
       ? 'project.manual'
       : 'project.discovered';

@@ -1,5 +1,6 @@
 import {
   MarkdownString,
+  ThemeColor,
   ThemeIcon,
   TreeItemCollapsibleState,
   Uri,
@@ -53,7 +54,9 @@ describe('ProjectTreeProvider', () => {
     expect(item?.entry).toEqual(current);
     expect(item?.label).toBe('personal');
     expect(item?.description).toBe('Current');
-    expect(item?.iconPath).toEqual(new ThemeIcon('folder'));
+    expect(item?.iconPath).toEqual(
+      new ThemeIcon('folder-opened', new ThemeColor('charts.blue')),
+    );
     expect(item?.contextValue).toBe('project.manual');
     expect(item?.collapsibleState).toBe(TreeItemCollapsibleState.None);
     expect(item?.command).toEqual({
@@ -68,7 +71,17 @@ describe('ProjectTreeProvider', () => {
 
     expect(item?.entry).toEqual(discovered);
     expect(item?.contextValue).toBe('project.discovered');
-    expect(item?.iconPath).toEqual(new ThemeIcon('window'));
+    expect(item?.iconPath).toEqual(new ThemeIcon('file-code'));
+  });
+
+  it('leaves the available folder kind icon uncolored', () => {
+    const availableFolder = project('file:///work/available', 'folder');
+    const provider = new ProjectTreeProvider(
+      { list: (): ProjectEntry[] => [availableFolder] },
+      { currentProjectUri: (): undefined => undefined },
+    );
+
+    expect(provider.getChildren()[0]?.iconPath).toEqual(new ThemeIcon('folder-opened'));
   });
 
   it('shows project type, path, status, and provenance in the tooltip', () => {
