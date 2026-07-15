@@ -1,39 +1,43 @@
 # Workspace Atlas
 
-Discover, organize, and switch between `.code-workspace` files.
+Discover, organize, and switch between local VS Code projects.
 
-Workspace Atlas keeps local VS Code workspace files together in a dedicated Activity Bar view. Register individual workspaces, discover them recursively from folders, give them shorter names, and open them without hunting through the filesystem.
+Workspace Atlas keeps saved `.code-workspace` files and folders together in a dedicated Activity Bar view. Add the projects you use, discover workspace files beneath configured roots, give either kind a shorter name, and open them without hunting through the filesystem.
 
-## Set up your workspaces
+## Add projects
 
-### Add Workspace
+Use **Add Project** in the Workspace Atlas sidebar and choose either **Workspace
+File** or **Folder**. Workspace files may also be discovered beneath configured
+roots; folders are added manually so the Projects list stays intentional.
 
-Use the **Add Workspace** button in the Workspace Atlas sidebar title, the welcome link in an empty view, or run **Workspace Atlas: Add Workspace...** from the Command Palette. Select one or more `.code-workspace` files to register them manually.
+For a direct flow, run **Workspace Atlas: Add Workspace...** or **Workspace Atlas:
+Add Folder...** from the Command Palette. Add Workspace accepts one or more saved
+`.code-workspace` files; Add Folder registers one or more local folders.
 
 ### Add Discovery Root
 
 Use **Add Discovery Root** from the sidebar title or empty-view welcome, or run **Workspace Atlas: Add Discovery Root...** from the Command Palette. Select a folder and Workspace Atlas will recursively discover `.code-workspace` files beneath it. Common build and dependency directories such as `.git` and `node_modules` are skipped.
 
-You can remove a root with **Workspace Atlas: Remove Discovery Root...**. Workspaces found only through that root leave the list; manually registered workspaces remain.
+You can remove a root with **Workspace Atlas: Remove Discovery Root...**. Workspace files found only through that root leave the Projects list; manually registered projects remain.
 
-## Open a workspace
+## Open a project
 
-Clicking a workspace in the sidebar opens it in the current window. The inline **Open Workspace in New Window** action opens the same entry in a separate window.
+Click a project to open it in the current window, or use its inline **Open Project
+in New Window** action. **Workspace Atlas: Switch Project** and **Workspace Atlas:
+Open Project in New Window** provide the same combined list through Quick Pick.
 
-The Command Palette also provides two Quick Pick commands:
-
-- **Workspace Atlas: Switch Workspace** opens the selected workspace in the current window.
-- **Workspace Atlas: Open Workspace in New Window** opens the selected workspace in a new window.
+Workspace Atlas keeps the existing `workspaceAtlas.switchWorkspace` command ID,
+so shortcuts assigned before folder support continue working.
 
 ## Organize and remove entries
 
-Right-click a workspace and choose **Rename Workspace** to assign an alias. The alias changes only the displayed name, not the file. Choose **Reset Workspace Name** to clear the alias and return to the filename-derived label.
+Right-click a project and choose **Rename Project** to assign an alias. The alias changes only the displayed name, not the workspace file or folder. Choose **Reset Project Name** to clear the alias and return to its filesystem-derived label.
 
-**Remove Workspace** removes the manual registration. If the same file is still found through a discovery root, it remains as a discovered entry. **Remove Workspace never deletes files or folders from disk.**
+**Remove from Workspace Atlas** removes a manual registration. If the same workspace file is still found through a discovery root, it remains as a discovered project. Removing a project never deletes its workspace file or folder from disk.
 
-## Stale workspace cleanup
+## Stale project cleanup
 
-Workspace Atlas watches active discovery roots and refreshes after workspace files are created or deleted. It also refreshes when settings or the current workspace change, when the view becomes visible, and when you run **Workspace Atlas: Refresh Workspaces**. Entries whose files are confirmed missing are removed automatically. An unreadable discovery root retains its existing entries until a successful scan can confirm their state.
+Discovered workspace files retain watcher-driven cleanup: Workspace Atlas watches active discovery roots and refreshes after `.code-workspace` files are created or deleted. Manually registered folders are checked on activation, when you run **Workspace Atlas: Refresh Projects**, and immediately before they open, so a confirmed deleted folder disappears at those times. Permission and transient I/O failures retain the project, and an unreadable discovery root retains its existing entries until a successful scan can confirm their state.
 
 ## Configuration
 
@@ -52,11 +56,12 @@ Using URI strings rather than platform-specific path strings keeps the stored fo
 
 ## Keyboard shortcuts
 
-Workspace Atlas does not install default keybindings. Open VS Code's **Keyboard Shortcuts** editor, search for `Workspace Atlas`, and assign shortcuts to either Quick Pick command or any other Workspace Atlas command.
+Workspace Atlas does not install default keybindings. Open VS Code's **Keyboard Shortcuts** editor, search for `Workspace Atlas`, and assign shortcuts to either project Quick Pick command or any other Workspace Atlas command. Existing shortcuts bound to `workspaceAtlas.switchWorkspace` continue to open the combined project list.
 
-## Stage 1 limitations
+## Limitations
 
-- Desktop VS Code and local `file:` workspaces only.
+- Desktop VS Code and local `file:` workspace files and folders only.
+- Discovery roots find saved `.code-workspace` files only; folders must be added manually.
 - No Git repository or branch awareness.
 - No native tab management; current-window and new-window opening use VS Code's standard workspace behavior.
 
