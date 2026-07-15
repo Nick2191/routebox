@@ -25,8 +25,9 @@ You can remove a root with **Workspace Atlas: Remove Discovery Root...**. Worksp
 Click a project to open it in the current window, or use its inline **Open Project
 in New Window** action. The sidebar and Quick Picks use VS Code's native
 `file-code` Codicon for workspace files and `folder-opened` Codicon for folders.
-The current project sorts first, keeps its **Current** label, and receives a blue
-icon accent in the sidebar.
+The current project sorts first, keeps its **Current** label, and uses a
+theme-colored `pass-filled` icon in the sidebar; available projects keep their
+workspace or folder kind icon.
 
 **Workspace Atlas: Switch Project** and **Workspace Atlas: Open Project in New
 Window** provide the same combined list through Quick Pick.
@@ -47,14 +48,15 @@ restarts and affect only the exact canonical path; other workspace files remain
 discoverable.
 
 Use the sidebar's **Show Excluded Workspaces** action (the closed-eye icon), or
-run **Workspace Atlas: Show Excluded Workspaces**, to review exclusions. Select
-an item or use its inline add action to restore it. Workspace Atlas first checks
-that the path still exists as a `.code-workspace` file, then restores it as a
-manual registration. Restoration from this list keeps the saved alias and
-last-opened time. Selecting the same file through **Add Project** > **Workspace
-File** or **Workspace Atlas: Add Workspace...** also restores it by clearing its
-exclusion and creating a fresh manual registration; that regular Add flow does
-not reuse the exclusion's saved alias or last-opened time.
+run **Workspace Atlas: Show Excluded Workspaces**, to review exclusions. Each
+excluded workspace appears as a single-line result with its path beside its
+label. Select an item or use its inline add action to restore it. Workspace Atlas
+first checks that the path still exists as a `.code-workspace` file, then
+restores it as a manual registration. Restoration from this list keeps the saved
+alias and last-opened time. Selecting the same file through **Add Project** >
+**Workspace File** or **Workspace Atlas: Add Workspace...** also restores it by
+clearing its exclusion and creating a fresh manual registration; that regular
+Add flow does not reuse the exclusion's saved alias or last-opened time.
 
 Removal and exclusion only change Workspace Atlas's registry. They never delete,
 move, rename, or modify a workspace file or folder on disk.
