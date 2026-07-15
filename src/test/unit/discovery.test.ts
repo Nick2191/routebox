@@ -34,9 +34,7 @@ class FakeFileSystem implements FileSystemPort {
     return uri;
   }
 
-  exists(uri: string): Promise<boolean> {
-    return Promise.resolve(this.directories.has(uri));
-  }
+  statKind(): Promise<'file'> { return Promise.resolve('file'); }
 
   parent(uri: string): string {
     return uri.slice(0, uri.lastIndexOf('/'));

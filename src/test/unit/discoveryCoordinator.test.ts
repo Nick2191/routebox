@@ -25,7 +25,7 @@ class FakeFileSystem implements FileSystemPort {
     return [baseUri, ...segments].join('/');
   }
   canonicalize(uri: string): string { return this.canonical.get(uri) ?? uri; }
-  exists(): Promise<boolean> { return Promise.resolve(true); }
+  statKind(): Promise<'file'> { return Promise.resolve('file'); }
   parent(uri: string): string {
     const slash = uri.lastIndexOf('/');
     return slash <= 'file://'.length ? 'file:///' : uri.slice(0, slash);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { FileKind, FileSystemPort } from '../../domain/discovery.js';
-import { WorkspaceReconciler } from '../../domain/reconciler.js';
+import type { FileKind, FileSystemPort, TargetKind } from '../../domain/discovery.js';
+import { ProjectReconciler } from '../../domain/reconciler.js';
 import {
   ProjectRegistry,
   type RegistryStorage,
@@ -36,9 +36,9 @@ class MemoryStorage implements RegistryStorage {
 }
 
 class FakeFileSystem implements FileSystemPort {
-  private readonly existing = new Map<string, boolean>();
+  private readonly kinds = new Map<string, TargetKind>();
 
-  setExists(uri: string, exists: boolean): void { this.existing.set(uri, exists); }
+  setKind(uri: string, kind: TargetKind): void { this.kinds.set(uri, kind); }
   readDirectory(): Promise<readonly [name: string, kind: FileKind][]> {
     return Promise.resolve([]);
   }
@@ -46,7 +46,9 @@ class FakeFileSystem implements FileSystemPort {
     return [baseUri.replace(/\/$/, ''), ...segments].join('/');
   }
   canonicalize(uri: string): string { return uri; }
-  exists(uri: string): Promise<boolean> { return Promise.resolve(this.existing.get(uri) ?? true); }
+  statKind(uri: string): Promise<TargetKind> {
+    return Promise.resolve(this.kinds.get(uri) ?? 'file');
+  }
   parent(uri: string): string { return uri.slice(0, uri.lastIndexOf('/')); }
 }
 
@@ -57,30 +59,34 @@ class BlockingFileSystem extends FakeFileSystem {
   private readonly released = new Promise<void>(resolve => { this.releaseChecks = resolve; });
   private hasStarted = false;
 
-  override async exists(uri: string): Promise<boolean> {
+  private async waitForRelease(): Promise<void> {
     if (!this.hasStarted) {
       this.hasStarted = true;
       this.markStarted();
     }
     await this.released;
-    return super.exists(uri);
+  }
+
+  override async statKind(uri: string): Promise<TargetKind> {
+    await this.waitForRelease();
+    return super.statKind(uri);
   }
 
   release(): void { this.releaseChecks(); }
 }
 
-describe('WorkspaceReconciler', () => {
+describe('ProjectReconciler', () => {
   let fs: FakeFileSystem;
   let storage: MemoryStorage;
   let registry: ProjectRegistry;
-  let reconciler: WorkspaceReconciler;
+  let reconciler: ProjectReconciler;
 
   beforeEach(async () => {
     fs = new FakeFileSystem();
     storage = new MemoryStorage();
     registry = new ProjectRegistry(storage);
     await registry.load();
-    reconciler = new WorkspaceReconciler(registry, fs);
+    reconciler = new ProjectReconciler(registry, fs);
   });
 
   it('merges discoveries without losing manual metadata', async () => {
@@ -102,6 +108,22 @@ describe('WorkspaceReconciler', () => {
       lastOpenedAt: 123,
       manuallyRegistered: true,
       discoveredFrom: ['configured:file:///root'],
+    });
+  });
+
+  it('creates discovered entries as workspaces and never adds provenance to folders', async () => {
+    const folder = await registry.upsertManualFolder('file:///work/folder.code-workspace');
+    await reconciler.reconcileSource('configured:file:///work', {
+      rootUri: 'file:///work',
+      workspaceUris: [folder.uri, 'file:///work/real.code-workspace'],
+      status: 'ok',
+    });
+
+    expect(registry.get(folder.id)).toEqual(folder);
+    expect(registry.get('file:///work/real.code-workspace')).toMatchObject({
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///work'],
     });
   });
 
@@ -234,8 +256,8 @@ describe('WorkspaceReconciler', () => {
       status: 'ok',
       workspaceUris: [existingUri],
     });
-    fs.setExists(missing.uri, false);
-    fs.setExists(existingUri, true);
+    fs.setKind(missing.uri, 'missing');
+    fs.setKind(existingUri, 'file');
 
     await expect(reconciler.removeMissing()).resolves.toEqual({ removed: 1 });
 
@@ -248,13 +270,24 @@ describe('WorkspaceReconciler', () => {
     }]);
   });
 
+  it('removes missing folders but retains entries whose kind changed', async () => {
+    const missing = await registry.upsertManualFolder('file:///work/missing');
+    const changed = await registry.upsertManualFolder('file:///work/changed');
+    fs.setKind(missing.uri, 'missing');
+    fs.setKind(changed.uri, 'file');
+
+    await expect(reconciler.removeMissing()).resolves.toEqual({ removed: 1 });
+    expect(registry.get(missing.id)).toBeUndefined();
+    expect(registry.get(changed.id)).toEqual(changed);
+  });
+
   it('applies confirmed deletions to fresh registry state after pending stats', async () => {
     const blockingFs = new BlockingFileSystem();
-    reconciler = new WorkspaceReconciler(registry, blockingFs);
+    reconciler = new ProjectReconciler(registry, blockingFs);
     const missing = await registry.upsertManualWorkspace('file:///root/missing.code-workspace');
     const retained = await registry.upsertManualWorkspace('file:///root/retained.code-workspace');
-    blockingFs.setExists(missing.uri, false);
-    blockingFs.setExists(retained.uri, true);
+    blockingFs.setKind(missing.uri, 'missing');
+    blockingFs.setKind(retained.uri, 'file');
     const cleanup = reconciler.removeMissing();
     await blockingFs.started;
 

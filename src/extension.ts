@@ -6,7 +6,7 @@ import {
 } from 'vscode';
 import { registerWorkspaceCommands } from './commands/registerCommands.js';
 import { WorkspaceDiscoveryService } from './domain/discovery.js';
-import { WorkspaceReconciler } from './domain/reconciler.js';
+import { ProjectReconciler } from './domain/reconciler.js';
 import { ProjectRegistry } from './domain/projectRegistry.js';
 import {
   DiscoveryCoordinator,
@@ -14,7 +14,7 @@ import {
 } from './platform/discoveryCoordinator.js';
 import { VscodeFileSystem } from './platform/vscodeFileSystem.js';
 import { VscodeRegistryStorage } from './platform/vscodeRegistryStorage.js';
-import { WorkspaceOpener } from './platform/workspaceOpener.js';
+import { ProjectOpener } from './platform/projectOpener.js';
 import { WorkspaceTreeProvider } from './ui/workspaceTreeProvider.js';
 
 export async function activate(context: ExtensionContext): Promise<void> {
@@ -36,7 +36,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       .get<string[]>('discoveryRoots', []),
   };
   const discovery = new WorkspaceDiscoveryService(fs);
-  const reconciler = new WorkspaceReconciler(registry, fs);
+  const reconciler = new ProjectReconciler(registry, fs);
   const tree = new WorkspaceTreeProvider(registry, current);
   const coordinator = new DiscoveryCoordinator({
     settings,
@@ -51,7 +51,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       if (message) void window.showInformationMessage(message);
     },
   });
-  const opener = new WorkspaceOpener(
+  const opener = new ProjectOpener(
     registry,
     fs,
     {

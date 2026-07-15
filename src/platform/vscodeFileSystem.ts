@@ -25,15 +25,6 @@ export class VscodeFileSystem implements FileSystemPort {
       throw error;
     }
   }
-  async exists(value: string): Promise<boolean> {
-    try {
-      await workspace.fs.stat(Uri.parse(value));
-      return true;
-    } catch (error) {
-      if (error instanceof FileSystemError && error.code === 'FileNotFound') return false;
-      throw error;
-    }
-  }
   parent(value: string): string {
     const uri = Uri.parse(value);
     return uri.with({ path: posix.dirname(uri.path) }).toString();

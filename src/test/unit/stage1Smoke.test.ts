@@ -12,14 +12,15 @@ import {
   WorkspaceDiscoveryService,
   type FileKind,
   type FileSystemPort,
+  type TargetKind,
 } from '../../domain/discovery.js';
-import { WorkspaceReconciler } from '../../domain/reconciler.js';
+import { ProjectReconciler } from '../../domain/reconciler.js';
 import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
   ProjectRegistry,
   type RegistryStorage,
 } from '../../domain/projectRegistry.js';
-import { WorkspaceOpener } from '../../platform/workspaceOpener.js';
+import { ProjectOpener } from '../../platform/projectOpener.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
@@ -45,12 +46,14 @@ class NodeFileSystem implements FileSystemPort {
 
   canonicalize(uri: string): string { return URI.parse(uri).toString(); }
 
-  async exists(uri: string): Promise<boolean> {
+  async statKind(uri: string): Promise<TargetKind> {
     try {
-      await stat(URI.parse(uri).fsPath);
-      return true;
+      const result = await stat(URI.parse(uri).fsPath);
+      if (result.isFile()) return 'file';
+      if (result.isDirectory()) return 'directory';
+      return 'other';
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
       throw error;
     }
   }
@@ -98,13 +101,13 @@ describe('Stage 1 smoke semantics', () => {
     const fs = new NodeFileSystem();
     const registry = new ProjectRegistry(new MemoryStorage());
     await registry.load();
-    const reconciler = new WorkspaceReconciler(registry, fs);
+    const reconciler = new ProjectReconciler(registry, fs);
     const discovery = new WorkspaceDiscoveryService(fs);
     const manualUri = URI.file(manualPath).toString();
     const discoveredUri = URI.file(discoveredPath).toString();
     const discoveryRootUri = URI.file(discoveryDirectory).toString();
     const opened: [string, ...unknown[]][] = [];
-    const opener = new WorkspaceOpener(
+    const opener = new ProjectOpener(
       registry,
       fs,
       {

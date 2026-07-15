@@ -1,5 +1,5 @@
 import { Uri } from 'vscode';
-import type { FileSystemPort } from '../domain/discovery.js';
+import type { FileKind, FileSystemPort } from '../domain/discovery.js';
 import type { ProjectRegistry } from '../domain/projectRegistry.js';
 
 export interface CommandExecutor {
@@ -9,9 +9,12 @@ export interface CommandExecutor {
 export interface Clock { now(): number }
 
 export type OpenMode = 'reuse' | 'new';
-export type OpenResult = { status: 'opened' } | { status: 'missing' };
+export type OpenResult =
+  | { status: 'opened' }
+  | { status: 'missing' }
+  | { status: 'kind-mismatch'; expected: 'file' | 'directory'; actual: FileKind };
 
-export class WorkspaceOpener {
+export class ProjectOpener {
   constructor(
     private readonly registry: ProjectRegistry,
     private readonly fs: FileSystemPort,
@@ -21,12 +24,15 @@ export class WorkspaceOpener {
 
   async open(id: string, mode: OpenMode): Promise<OpenResult> {
     const entry = this.registry.get(id);
-    if (!entry) throw new Error('Workspace is no longer registered.');
+    if (!entry) throw new Error('Project is no longer registered.');
 
-    if (!await this.fs.exists(entry.uri)) {
+    const actual = await this.fs.statKind(entry.uri);
+    if (actual === 'missing') {
       await this.registry.remove([id]);
       return { status: 'missing' };
     }
+    const expected = entry.kind === 'workspace' ? 'file' : 'directory';
+    if (actual !== expected) return { status: 'kind-mismatch', expected, actual };
 
     const options = mode === 'reuse'
       ? { forceReuseWindow: true }

@@ -126,27 +126,6 @@ describe('VscodeFileSystem', () => {
     await expect(new VscodeFileSystem().statKind('file:///private')).rejects.toBe(inaccessible);
   });
 
-  it('returns false only for FileNotFound and rethrows inaccessible storage errors', async () => {
-    const fs = new VscodeFileSystem();
-    setWorkspaceFileSystem({
-      stat: () => Promise.reject(FileSystemError.FileNotFound()),
-      readDirectory: () => Promise.resolve([]),
-    });
-    await expect(fs.exists('file:///missing.code-workspace')).resolves.toBe(false);
-
-    const inaccessible = FileSystemError.NoPermissions();
-    setWorkspaceFileSystem({
-      stat: () => Promise.reject(inaccessible),
-      readDirectory: () => Promise.resolve([]),
-    });
-    await expect(fs.exists('file:///inaccessible.code-workspace')).rejects.toBe(inaccessible);
-
-    setWorkspaceFileSystem({
-      stat: () => Promise.resolve(fileStat),
-      readDirectory: () => Promise.resolve([]),
-    });
-    await expect(fs.exists('file:///present.code-workspace')).resolves.toBe(true);
-  });
 });
 
 describe('VscodeRegistryStorage', () => {

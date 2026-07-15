@@ -13,7 +13,7 @@ import {
   type ProjectEntry,
 } from '../domain/projectEntry.js';
 import type { RefreshResult } from '../platform/discoveryCoordinator.js';
-import type { OpenMode, OpenResult } from '../platform/workspaceOpener.js';
+import type { OpenMode, OpenResult } from '../platform/projectOpener.js';
 import { buildWorkspaceQuickPickItems } from '../ui/workspaceQuickPick.js';
 
 export const commandIds = {
