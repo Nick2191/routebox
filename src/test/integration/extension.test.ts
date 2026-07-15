@@ -16,6 +16,7 @@ suite('Workspace Atlas extension', () => {
       'workspaceAtlas.addDiscoveryRoot',
       'workspaceAtlas.removeDiscoveryRoot',
       'workspaceAtlas.refreshWorkspaces',
+      'workspaceAtlas.showExcludedWorkspaces',
       'workspaceAtlas.renameWorkspace',
       'workspaceAtlas.resetWorkspaceName',
       'workspaceAtlas.removeWorkspace',
@@ -42,6 +43,7 @@ suite('Workspace Atlas extension', () => {
       { command: 'workspaceAtlas.addDiscoveryRoot', title: 'Workspace Atlas: Add Discovery Root...' },
       { command: 'workspaceAtlas.removeDiscoveryRoot', title: 'Workspace Atlas: Remove Discovery Root...' },
       { command: 'workspaceAtlas.refreshWorkspaces', title: 'Workspace Atlas: Refresh Projects', icon: '$(refresh)' },
+      { command: 'workspaceAtlas.showExcludedWorkspaces', title: 'Workspace Atlas: Show Excluded Workspaces', icon: '$(eye-closed)' },
       { command: 'workspaceAtlas.renameWorkspace', title: 'Workspace Atlas: Rename Project' },
       { command: 'workspaceAtlas.resetWorkspaceName', title: 'Workspace Atlas: Reset Project Name' },
       { command: 'workspaceAtlas.removeWorkspace', title: 'Workspace Atlas: Remove from Workspace Atlas', icon: '$(trash)' },
@@ -60,6 +62,7 @@ suite('Workspace Atlas extension', () => {
     assert.deepEqual(menus['view/title'], [
       { command: 'workspaceAtlas.addProject', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
       { command: 'workspaceAtlas.refreshWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@2' },
+      { command: 'workspaceAtlas.showExcludedWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@3' },
       { command: 'workspaceAtlas.addDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@1' },
       { command: 'workspaceAtlas.removeDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@2' },
     ]);

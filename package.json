@@ -77,6 +77,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "workspaceAtlas.showExcludedWorkspaces",
+        "title": "Workspace Atlas: Show Excluded Workspaces",
+        "icon": "$(eye-closed)"
+      },
+      {
         "command": "workspaceAtlas.renameWorkspace",
         "title": "Workspace Atlas: Rename Project"
       },
@@ -115,6 +120,11 @@
           "command": "workspaceAtlas.refreshWorkspaces",
           "when": "view == workspaceAtlas.workspaces",
           "group": "navigation@2"
+        },
+        {
+          "command": "workspaceAtlas.showExcludedWorkspaces",
+          "when": "view == workspaceAtlas.workspaces",
+          "group": "navigation@3"
         },
         {
           "command": "workspaceAtlas.addDiscoveryRoot",

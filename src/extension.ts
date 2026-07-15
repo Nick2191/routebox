@@ -17,6 +17,7 @@ import { VscodeFileSystem } from './platform/vscodeFileSystem.js';
 import { VscodeRegistryStorage } from './platform/vscodeRegistryStorage.js';
 import { ProjectOpener } from './platform/projectOpener.js';
 import { ProjectTreeProvider } from './ui/projectTreeProvider.js';
+import { VscodeExcludedWorkspacePicker } from './ui/excludedWorkspaceQuickPick.js';
 
 export async function activate(context: ExtensionContext): Promise<void> {
   const registry = new ProjectRegistry(new VscodeRegistryStorage(context.globalState));
@@ -46,6 +47,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const discovery = new WorkspaceDiscoveryService(fs);
   const reconciler = new ProjectReconciler(registry, fs);
   const tree = new ProjectTreeProvider(registry, currentProject);
+  const excludedPicker = new VscodeExcludedWorkspacePicker();
   const coordinator = new DiscoveryCoordinator({
     settings,
     current: currentWorkspace,
@@ -94,6 +96,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       tree,
       fs,
       current: currentProject,
+      excludedPicker,
     }),
     treeView.onDidChangeVisibility(event => {
       if (event.visible) refresh('view-visible');

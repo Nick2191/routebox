@@ -11,12 +11,17 @@ import {
   isLocalFileUri,
   isWorkspaceFileUri,
   projectLabel,
+  type ExcludedWorkspace,
   type ProjectEntry,
   type ProjectKind,
 } from '../domain/projectEntry.js';
 import type { RefreshResult } from '../platform/discoveryCoordinator.js';
 import type { OpenMode, OpenResult } from '../platform/projectOpener.js';
 import { buildProjectQuickPickItems } from '../ui/projectQuickPick.js';
+import {
+  VscodeExcludedWorkspacePicker,
+  type ExcludedWorkspacePicker,
+} from '../ui/excludedWorkspaceQuickPick.js';
 
 export const commandIds = {
   switchProject: 'workspaceAtlas.switchWorkspace',
@@ -30,6 +35,7 @@ export const commandIds = {
   rename: 'workspaceAtlas.renameWorkspace',
   resetName: 'workspaceAtlas.resetWorkspaceName',
   remove: 'workspaceAtlas.removeWorkspace',
+  showExcluded: 'workspaceAtlas.showExcludedWorkspaces',
   reveal: 'workspaceAtlas.revealWorkspaceFile',
 } as const;
 
@@ -54,12 +60,14 @@ export interface ProjectUi {
 
 interface RegistryCommandPort {
   list(): ProjectEntry[];
+  listExcluded(): ExcludedWorkspace[];
   get(id: string): ProjectEntry | undefined;
   upsertManualWorkspace(uri: string): Promise<unknown>;
   upsertManualFolder(uri: string): Promise<unknown>;
   setAlias(id: string, alias: string): Promise<void>;
   resetAlias(id: string): Promise<void>;
-  removeManual(id: string): Promise<void>;
+  removeProject(id: string): Promise<unknown>;
+  restoreExcluded(id: string): Promise<unknown>;
 }
 
 interface CoordinatorCommandPort {
@@ -92,6 +100,7 @@ export interface RegisterProjectCommandsDependencies {
   tree: TreeRefreshPort;
   fs: Pick<FileSystemPort, 'canonicalize' | 'statKind'>;
   current: CurrentProjectPort;
+  excludedPicker?: ExcludedWorkspacePicker;
   roots?: DiscoveryRootSettings;
   ui?: ProjectUi;
   commands?: CommandRegistry;
@@ -205,6 +214,7 @@ export function registerProjectCommands(
   const ui = dependencies.ui ?? new VscodeProjectUi();
   const roots = dependencies.roots ?? new VscodeDiscoveryRootSettings();
   const commandRegistry = dependencies.commands ?? vscodeCommands;
+  const excludedPicker = dependencies.excludedPicker ?? new VscodeExcludedWorkspacePicker();
 
   const selectEntry = async (argument?: EntryArgument): Promise<ProjectEntry | undefined> => {
     if (argument === undefined) {
@@ -331,8 +341,31 @@ export function registerProjectCommands(
   const remove = async (argument?: EntryArgument): Promise<void> => {
     const entry = await selectEntry(argument);
     if (!entry) return;
-    await dependencies.registry.removeManual(entry.id);
+    await dependencies.registry.removeProject(entry.id);
     dependencies.tree.refresh();
+  };
+
+  const showExcluded = async (): Promise<void> => {
+    if (dependencies.registry.listExcluded().length === 0) {
+      await ui.showInfo('No excluded workspaces.');
+      return;
+    }
+    await excludedPicker.show({
+      list: () => dependencies.registry.listExcluded(),
+      restore: async id => {
+        const exclusion = dependencies.registry.listExcluded()
+          .find(entry => entry.id === id);
+        if (!exclusion) throw new Error('Workspace is no longer excluded.');
+        const kind = await dependencies.fs.statKind(exclusion.uri);
+        if (kind === 'missing') throw new Error('Workspace file no longer exists.');
+        if (kind !== 'file' || !isWorkspaceFileUri(exclusion.uri)) {
+          throw new Error('Excluded project is no longer a .code-workspace file.');
+        }
+        await dependencies.registry.restoreExcluded(id);
+        dependencies.tree.refresh();
+      },
+      reportError: async error => { await ui.showError(errorMessage(error)); },
+    });
   };
 
   const reveal = async (argument?: EntryArgument): Promise<void> => {
@@ -361,6 +394,7 @@ export function registerProjectCommands(
     register(commandIds.rename, rename),
     register(commandIds.resetName, resetName),
     register(commandIds.remove, remove),
+    register(commandIds.showExcluded, showExcluded),
     register(commandIds.reveal, reveal),
     register(openCurrentCommandId, argument => open('reuse', argument)),
   ];

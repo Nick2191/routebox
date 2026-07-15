@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TargetKind } from '../../domain/discovery.js';
-import type { ProjectEntry, ProjectKind } from '../../domain/projectEntry.js';
+import type {
+  ExcludedWorkspace,
+  ProjectEntry,
+  ProjectKind,
+} from '../../domain/projectEntry.js';
 import type { RefreshResult } from '../../platform/discoveryCoordinator.js';
+import type {
+  ExcludedWorkspacePicker,
+  ExcludedWorkspacePickerOptions,
+} from '../../ui/excludedWorkspaceQuickPick.js';
 import {
   commandIds,
   registerProjectCommands,
@@ -49,17 +57,37 @@ class FakeUi implements ProjectUi {
   revealFile(uri: string): Promise<void> { this.revealed.push(uri); return Promise.resolve(); }
 }
 
+class FakeExcludedWorkspacePicker implements ExcludedWorkspacePicker {
+  options: ExcludedWorkspacePickerOptions | undefined;
+  readonly show = vi.fn((options: ExcludedWorkspacePickerOptions) => {
+    this.options = options;
+    return Promise.resolve();
+  });
+
+  async restore(id: string): Promise<void> {
+    if (!this.options) throw new Error('Excluded workspace picker was not shown.');
+    try {
+      await this.options.restore(id);
+    } catch (error) {
+      await this.options.reportError(error);
+    }
+  }
+}
+
 function createHarness(): {
   run: (id: string, argument?: unknown) => Promise<void>;
   ui: FakeUi;
   registry: {
     entries: ProjectEntry[];
+    exclusions: ExcludedWorkspace[];
     upsertManualWorkspace: ReturnType<typeof vi.fn>;
     upsertManualFolder: ReturnType<typeof vi.fn>;
     setAlias: ReturnType<typeof vi.fn>;
     resetAlias: ReturnType<typeof vi.fn>;
-    removeManual: ReturnType<typeof vi.fn>;
+    removeProject: ReturnType<typeof vi.fn>;
+    restoreExcluded: ReturnType<typeof vi.fn>;
   };
+  excludedPicker: FakeExcludedWorkspacePicker;
   coordinator: { refresh: ReturnType<typeof vi.fn> };
   opener: { open: ReturnType<typeof vi.fn> };
   fs: {
@@ -75,7 +103,9 @@ function createHarness(): {
   const ui = new FakeUi();
   const registry = {
     entries: [alpha],
+    exclusions: [] as ExcludedWorkspace[],
     list(): ProjectEntry[] { return this.entries; },
+    listExcluded(): ExcludedWorkspace[] { return this.exclusions; },
     get(id: string): ProjectEntry | undefined {
       return this.entries.find(entry => entry.id === id);
     },
@@ -89,8 +119,13 @@ function createHarness(): {
     })),
     setAlias: vi.fn(() => Promise.resolve()),
     resetAlias: vi.fn(() => Promise.resolve()),
-    removeManual: vi.fn(() => Promise.resolve()),
+    removeProject: vi.fn(() => Promise.resolve('removed' as const)),
+    restoreExcluded: vi.fn((id: string) => {
+      registry.exclusions = registry.exclusions.filter(entry => entry.id !== id);
+      return Promise.resolve(alpha);
+    }),
   };
+  const excludedPicker = new FakeExcludedWorkspacePicker();
   const coordinator = {
     refresh: vi.fn<() => Promise<RefreshResult>>(() => Promise.resolve({
       removed: 0,
@@ -127,6 +162,7 @@ function createHarness(): {
     fs,
     current: { currentProjectUri: () => alpha.uri },
     ui,
+    excludedPicker,
     commands: {
       registerCommand(id, callback): { dispose(): void } {
         callbacks.set(id, callback);
@@ -141,6 +177,7 @@ function createHarness(): {
     run,
     ui,
     registry,
+    excludedPicker,
     coordinator,
     opener,
     fs,
@@ -443,12 +480,91 @@ describe('project command handlers', () => {
     expect(harness.tree.refresh).toHaveBeenCalledOnce();
   });
 
-  it('removes only manual registration and never touches the filesystem', async () => {
+  it('removes any project with project-oriented semantics', async () => {
     const { run, registry, tree } = createHarness();
+    const discovered: ProjectEntry = {
+      ...alpha,
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///work'],
+    };
+    registry.entries = [discovered];
 
-    await run(commandIds.remove, alpha.id);
+    await run(commandIds.remove, discovered.id);
 
-    expect(registry.removeManual.mock.calls).toEqual([[alpha.id]]);
-    expect(tree.refresh.mock.calls).toHaveLength(1);
+    expect(registry.removeProject).toHaveBeenCalledWith(discovered.id);
+    expect(tree.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('reports an empty exclusion list without opening the picker', async () => {
+    const { run, ui, excludedPicker } = createHarness();
+
+    await run(commandIds.showExcluded);
+
+    expect(ui.infos).toEqual(['No excluded workspaces.']);
+    expect(excludedPicker.show).not.toHaveBeenCalled();
+  });
+
+  it('validates and restores an excluded workspace then refreshes the tree', async () => {
+    const { run, registry, excludedPicker, fs, tree } = createHarness();
+    const entry: ExcludedWorkspace = {
+      id: 'file:///work/restorable.code-workspace',
+      uri: 'file:///work/restorable.code-workspace',
+      kind: 'workspace',
+    };
+    registry.exclusions = [entry];
+    fs.kinds.set(entry.uri, 'file');
+    const statKind = vi.spyOn(fs, 'statKind');
+
+    await run(commandIds.showExcluded);
+    await excludedPicker.restore(entry.id);
+
+    expect(statKind).toHaveBeenCalledWith(entry.uri);
+    expect(entry.uri).toMatch(/\.code-workspace$/);
+    expect(registry.restoreExcluded).toHaveBeenCalledWith(entry.id);
+    expect(tree.refresh).toHaveBeenCalledOnce();
+    expect(excludedPicker.options?.list()).toEqual([]);
+  });
+
+  it.each([
+    ['missing', 'file:///work/missing.code-workspace', 'Workspace file no longer exists.'],
+    ['directory', 'file:///work/folder.code-workspace', 'Excluded project is no longer a .code-workspace file.'],
+    ['other', 'file:///work/special.code-workspace', 'Excluded project is no longer a .code-workspace file.'],
+    ['file', 'file:///work/renamed.json', 'Excluded project is no longer a .code-workspace file.'],
+  ] as const)('keeps a %s excluded target intact and reports its validation error', async (
+    kind,
+    uri,
+    message,
+  ) => {
+    const { run, registry, excludedPicker, fs, tree, ui } = createHarness();
+    const entry: ExcludedWorkspace = { id: uri, uri, kind: 'workspace' };
+    registry.exclusions = [entry];
+    fs.kinds.set(uri, kind);
+
+    await run(commandIds.showExcluded);
+    await excludedPicker.restore(entry.id);
+
+    expect(registry.restoreExcluded).not.toHaveBeenCalled();
+    expect(registry.exclusions).toEqual([entry]);
+    expect(tree.refresh).not.toHaveBeenCalled();
+    expect(ui.errors).toEqual([message]);
+  });
+
+  it('keeps an inaccessible excluded target intact and reports the access error', async () => {
+    const { run, registry, excludedPicker, fs, tree, ui } = createHarness();
+    const entry: ExcludedWorkspace = {
+      id: 'file:///work/private.code-workspace',
+      uri: 'file:///work/private.code-workspace',
+      kind: 'workspace',
+    };
+    registry.exclusions = [entry];
+    vi.spyOn(fs, 'statKind').mockRejectedValue(new Error('Permission denied'));
+
+    await run(commandIds.showExcluded);
+    await excludedPicker.restore(entry.id);
+
+    expect(registry.restoreExcluded).not.toHaveBeenCalled();
+    expect(registry.exclusions).toEqual([entry]);
+    expect(tree.refresh).not.toHaveBeenCalled();
+    expect(ui.errors).toEqual(['Permission denied']);
   });
 });
