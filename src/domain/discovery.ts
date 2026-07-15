@@ -1,6 +1,7 @@
 import { isWorkspaceFileUri } from './projectEntry.js';
 
 export type FileKind = 'file' | 'directory' | 'other';
+export type TargetKind = FileKind | 'missing';
 
 export interface FileSystemPort {
   readDirectory(uri: string): Promise<readonly [name: string, kind: FileKind][]>;

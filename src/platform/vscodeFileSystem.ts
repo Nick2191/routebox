@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 import { FileSystemError, FileType, Uri, workspace } from 'vscode';
-import type { FileKind, FileSystemPort } from '../domain/discovery.js';
+import type { FileKind, FileSystemPort, TargetKind } from '../domain/discovery.js';
 
 export class VscodeFileSystem implements FileSystemPort {
   canonicalize(value: string): string {
@@ -16,6 +16,14 @@ export class VscodeFileSystem implements FileSystemPort {
 
   joinPath(baseUri: string, ...segments: string[]): string {
     return Uri.joinPath(Uri.parse(baseUri), ...segments).toString();
+  }
+  async statKind(value: string): Promise<TargetKind> {
+    try {
+      return this.fileKind((await workspace.fs.stat(Uri.parse(value))).type);
+    } catch (error) {
+      if (error instanceof FileSystemError && error.code === 'FileNotFound') return 'missing';
+      throw error;
+    }
   }
   async exists(value: string): Promise<boolean> {
     try {

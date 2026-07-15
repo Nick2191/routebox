@@ -99,6 +99,33 @@ describe('VscodeFileSystem', () => {
     ]);
   });
 
+  it.each([
+    [FileType.File, 'file'],
+    [FileType.Directory, 'directory'],
+    [FileType.SymbolicLink, 'other'],
+  ] as const)('maps stat type %s to %s', async (type, expected) => {
+    setWorkspaceFileSystem({
+      stat: () => Promise.resolve({ type, ctime: 0, mtime: 0, size: 0 }),
+      readDirectory: () => Promise.resolve([]),
+    });
+    await expect(new VscodeFileSystem().statKind('file:///target')).resolves.toBe(expected);
+  });
+
+  it('maps only FileNotFound to missing and rethrows inaccessible errors', async () => {
+    setWorkspaceFileSystem({
+      stat: () => Promise.reject(FileSystemError.FileNotFound()),
+      readDirectory: () => Promise.resolve([]),
+    });
+    await expect(new VscodeFileSystem().statKind('file:///missing')).resolves.toBe('missing');
+
+    const inaccessible = FileSystemError.NoPermissions();
+    setWorkspaceFileSystem({
+      stat: () => Promise.reject(inaccessible),
+      readDirectory: () => Promise.resolve([]),
+    });
+    await expect(new VscodeFileSystem().statKind('file:///private')).rejects.toBe(inaccessible);
+  });
+
   it('returns false only for FileNotFound and rethrows inaccessible storage errors', async () => {
     const fs = new VscodeFileSystem();
     setWorkspaceFileSystem({
