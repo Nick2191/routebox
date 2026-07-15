@@ -1,10 +1,10 @@
 import type { DiscoveryResult, FileSystemPort } from './discovery.js';
-import type { WorkspaceSourceId } from './workspaceEntry.js';
-import type { WorkspaceRegistry } from './workspaceRegistry.js';
+import type { WorkspaceSourceId } from './projectEntry.js';
+import type { ProjectRegistry } from './projectRegistry.js';
 
 export class WorkspaceReconciler {
   constructor(
-    private readonly registry: WorkspaceRegistry,
+    private readonly registry: ProjectRegistry,
     private readonly fs: FileSystemPort,
   ) {}
 
@@ -26,6 +26,7 @@ export class WorkspaceReconciler {
         entries.set(uri, {
           id: uri,
           uri,
+          kind: 'workspace',
           manuallyRegistered: false,
           discoveredFrom: [source],
         });

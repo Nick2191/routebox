@@ -5,22 +5,24 @@ import {
   Uri,
 } from 'vscode';
 import { describe, expect, it, vi } from 'vitest';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
   WorkspaceTreeProvider,
   type WorkspaceTreeItem,
 } from '../../ui/workspaceTreeProvider.js';
 
-const current: WorkspaceEntry = {
+const current: ProjectEntry = {
   id: 'file:///work/zulu/Current%20Workspace.code-workspace',
   uri: 'file:///work/zulu/Current%20Workspace.code-workspace',
+  kind: 'workspace',
   manuallyRegistered: false,
   discoveredFrom: ['current:file:///work'],
 };
 
-const manual: WorkspaceEntry = {
+const manual: ProjectEntry = {
   id: 'file:///outside/alpha.code-workspace',
   uri: 'file:///outside/alpha.code-workspace',
+  kind: 'workspace',
   alias: 'Alpha',
   manuallyRegistered: true,
   discoveredFrom: [],

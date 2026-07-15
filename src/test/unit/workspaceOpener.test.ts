@@ -1,11 +1,11 @@
 import { Uri } from 'vscode';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FileKind, FileSystemPort } from '../../domain/discovery.js';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
-  WorkspaceRegistry,
+  ProjectRegistry,
   type RegistryStorage,
-} from '../../domain/workspaceRegistry.js';
+} from '../../domain/projectRegistry.js';
 import {
   WorkspaceOpener,
   type Clock,
@@ -17,7 +17,7 @@ class MemoryStorage implements RegistryStorage {
   private blocker: { started(): void; released: Promise<void> } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  async write(entries: readonly WorkspaceEntry[]): Promise<void> {
+  async write(entries: readonly ProjectEntry[]): Promise<void> {
     if (this.blocker) {
       const blocker = this.blocker;
       this.blocker = undefined;
@@ -70,17 +70,17 @@ describe('WorkspaceOpener', () => {
   let fs: FakeFileSystem;
   let commands: FakeCommands;
   let storage: MemoryStorage;
-  let registry: WorkspaceRegistry;
+  let registry: ProjectRegistry;
   let opener: WorkspaceOpener;
-  let entry: WorkspaceEntry;
+  let entry: ProjectEntry;
 
   beforeEach(async () => {
     fs = new FakeFileSystem();
     commands = new FakeCommands();
     storage = new MemoryStorage();
-    registry = new WorkspaceRegistry(storage);
+    registry = new ProjectRegistry(storage);
     await registry.load();
-    entry = await registry.upsertManual('file:///work/a.code-workspace');
+    entry = await registry.upsertManualWorkspace('file:///work/a.code-workspace');
     opener = new WorkspaceOpener(registry, fs, commands, new FakeClock(123));
   });
 
@@ -102,7 +102,7 @@ describe('WorkspaceOpener', () => {
   });
 
   it('removes the entire missing entry before returning a missing result', async () => {
-    const retained = await registry.upsertManual('file:///work/retained.code-workspace');
+    const retained = await registry.upsertManualWorkspace('file:///work/retained.code-workspace');
     await registry.setAlias(entry.id, 'Alpha');
     await registry.markOpened(entry.id, 99);
     fs.setExists(entry.uri, false);
@@ -115,7 +115,7 @@ describe('WorkspaceOpener', () => {
   });
 
   it('targeted missing cleanup preserves unrelated metadata committed first', async () => {
-    const retained = await registry.upsertManual('file:///work/retained.code-workspace');
+    const retained = await registry.upsertManualWorkspace('file:///work/retained.code-workspace');
     fs.setExists(entry.uri, false);
     const blocked = storage.blockNextWrite();
     const alias = registry.setAlias(retained.id, 'Fresh Alias');

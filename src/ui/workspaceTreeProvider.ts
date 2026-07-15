@@ -8,18 +8,18 @@ import {
   Uri,
 } from 'vscode';
 import {
-  sortWorkspaceEntries,
-  workspaceLabel,
-  type WorkspaceEntry,
+  sortProjectEntries,
+  projectLabel,
+  type ProjectEntry,
   type WorkspaceSourceId,
-} from '../domain/workspaceEntry.js';
+} from '../domain/projectEntry.js';
 
-interface RegistryTreePort { list(): WorkspaceEntry[] }
+interface RegistryTreePort { list(): ProjectEntry[] }
 interface CurrentWorkspacePort { workspaceFileUri(): string | undefined }
 
 export class WorkspaceTreeItem extends TreeItem {
-  constructor(readonly entry: WorkspaceEntry, currentUri?: string) {
-    super(workspaceLabel(entry), TreeItemCollapsibleState.None);
+  constructor(readonly entry: ProjectEntry, currentUri?: string) {
+    super(projectLabel(entry), TreeItemCollapsibleState.None);
     const uri = Uri.parse(entry.uri);
     const current = entry.uri === currentUri;
     const filename = posix.basename(uri.path);
@@ -58,12 +58,12 @@ export class WorkspaceTreeProvider {
   getChildren(element?: WorkspaceTreeItem): WorkspaceTreeItem[] {
     if (element) return [];
     const currentUri = this.current.workspaceFileUri();
-    return sortWorkspaceEntries(this.registry.list(), currentUri)
+    return sortProjectEntries(this.registry.list(), currentUri)
       .map(entry => new WorkspaceTreeItem(entry, currentUri));
   }
 }
 
-function workspaceProvenance(entry: WorkspaceEntry): string {
+function workspaceProvenance(entry: ProjectEntry): string {
   const values = entry.discoveredFrom.map(sourceProvenance);
   if (entry.manuallyRegistered) values.unshift('Manually registered');
   return values.length > 0 ? values.join(' · ') : 'Discovered workspace';

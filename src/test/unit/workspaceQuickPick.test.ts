@@ -1,14 +1,15 @@
 import { Uri } from 'vscode';
 import { afterEach, describe, expect, it } from 'vitest';
 import { VscodeWorkspaceUi } from '../../commands/registerCommands.js';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry } from '../../domain/projectEntry.js';
 import { buildWorkspaceQuickPickItems } from '../../ui/workspaceQuickPick.js';
 import { setOpenDialog, setQuickPick } from '../adapters/vscode.js';
 
-function workspaceEntry(uri: string, alias?: string): WorkspaceEntry {
+function workspaceEntry(uri: string, alias?: string): ProjectEntry {
   return {
     id: uri,
     uri,
+    kind: 'workspace',
     alias,
     manuallyRegistered: false,
     discoveredFrom: [],

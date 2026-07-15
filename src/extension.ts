@@ -7,7 +7,7 @@ import {
 import { registerWorkspaceCommands } from './commands/registerCommands.js';
 import { WorkspaceDiscoveryService } from './domain/discovery.js';
 import { WorkspaceReconciler } from './domain/reconciler.js';
-import { WorkspaceRegistry } from './domain/workspaceRegistry.js';
+import { ProjectRegistry } from './domain/projectRegistry.js';
 import {
   DiscoveryCoordinator,
   type RefreshReason,
@@ -18,7 +18,7 @@ import { WorkspaceOpener } from './platform/workspaceOpener.js';
 import { WorkspaceTreeProvider } from './ui/workspaceTreeProvider.js';
 
 export async function activate(context: ExtensionContext): Promise<void> {
-  const registry = new WorkspaceRegistry(new VscodeRegistryStorage(context.globalState));
+  const registry = new ProjectRegistry(new VscodeRegistryStorage(context.globalState));
   const loaded = await registry.load();
   if (loaded.reset) {
     void window.showWarningMessage(

@@ -1,4 +1,4 @@
-import { isWorkspaceFileUri } from './workspaceEntry.js';
+import { isWorkspaceFileUri } from './projectEntry.js';
 
 export type FileKind = 'file' | 'directory' | 'other';
 

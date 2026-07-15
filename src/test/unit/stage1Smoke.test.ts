@@ -14,18 +14,18 @@ import {
   type FileSystemPort,
 } from '../../domain/discovery.js';
 import { WorkspaceReconciler } from '../../domain/reconciler.js';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
-  WorkspaceRegistry,
+  ProjectRegistry,
   type RegistryStorage,
-} from '../../domain/workspaceRegistry.js';
+} from '../../domain/projectRegistry.js';
 import { WorkspaceOpener } from '../../platform/workspaceOpener.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  write(entries: readonly WorkspaceEntry[]): Promise<void> {
+  write(entries: readonly ProjectEntry[]): Promise<void> {
     this.value = entries;
     return Promise.resolve();
   }
@@ -65,7 +65,7 @@ class SmokeUi implements WorkspaceUi {
   pickWorkspaceFiles(): Promise<readonly string[]> { return Promise.resolve(this.workspaceFiles); }
   pickDiscoveryRoot(): Promise<string | undefined> { return Promise.resolve(undefined); }
   pickDiscoveryRootToRemove(): Promise<string | undefined> { return Promise.resolve(undefined); }
-  pickWorkspace(): Promise<WorkspaceEntry | undefined> { return Promise.resolve(undefined); }
+  pickWorkspace(): Promise<ProjectEntry | undefined> { return Promise.resolve(undefined); }
   inputAlias(): Promise<string | undefined> { return Promise.resolve(this.alias); }
   showInfo(): Promise<void> { return Promise.resolve(); }
   showWarning(): Promise<void> { return Promise.resolve(); }
@@ -96,7 +96,7 @@ describe('Stage 1 smoke semantics', () => {
     await writeFile(discoveredPath, '{"folders":[]}');
 
     const fs = new NodeFileSystem();
-    const registry = new WorkspaceRegistry(new MemoryStorage());
+    const registry = new ProjectRegistry(new MemoryStorage());
     await registry.load();
     const reconciler = new WorkspaceReconciler(registry, fs);
     const discovery = new WorkspaceDiscoveryService(fs);

@@ -1,6 +1,6 @@
 import { Uri } from 'vscode';
 import type { FileSystemPort } from '../domain/discovery.js';
-import type { WorkspaceRegistry } from '../domain/workspaceRegistry.js';
+import type { ProjectRegistry } from '../domain/projectRegistry.js';
 
 export interface CommandExecutor {
   execute(command: string, ...args: unknown[]): Promise<unknown>;
@@ -13,7 +13,7 @@ export type OpenResult = { status: 'opened' } | { status: 'missing' };
 
 export class WorkspaceOpener {
   constructor(
-    private readonly registry: WorkspaceRegistry,
+    private readonly registry: ProjectRegistry,
     private readonly fs: FileSystemPort,
     private readonly commands: CommandExecutor,
     private readonly clock: Clock,

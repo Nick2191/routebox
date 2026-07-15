@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { FileSystemError, RelativePattern, Uri, workspace, type Disposable } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../domain/discovery.js';
-import type { WorkspaceEntry, WorkspaceSourceId } from '../domain/workspaceEntry.js';
+import type { ProjectEntry, WorkspaceSourceId } from '../domain/projectEntry.js';
 
 export type RefreshReason =
   | 'activation'
@@ -30,7 +30,7 @@ interface ReconcilerPort {
 }
 
 interface RegistryPort {
-  list(): WorkspaceEntry[];
+  list(): ProjectEntry[];
 }
 
 export interface AutomaticRootPolicy {

@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileSystemError, Uri } from 'vscode';
 import type { DiscoveryResult, FileSystemPort } from '../../domain/discovery.js';
-import type { WorkspaceEntry, WorkspaceSourceId } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry, WorkspaceSourceId } from '../../domain/projectEntry.js';
 import {
   DiscoveryCoordinator,
   type DiscoveryCoordinatorOptions,
@@ -69,9 +69,9 @@ class BlockingDiscovery extends FakeDiscovery {
 }
 
 class FakeRegistry {
-  readonly entries: WorkspaceEntry[] = [];
+  readonly entries: ProjectEntry[] = [];
 
-  list(): WorkspaceEntry[] {
+  list(): ProjectEntry[] {
     return this.entries.map(entry => ({ ...entry, discoveredFrom: [...entry.discoveredFrom] }));
   }
 
@@ -79,6 +79,7 @@ class FakeRegistry {
     this.entries.push({
       id: `file:///${this.entries.length}.code-workspace`,
       uri: `file:///${this.entries.length}.code-workspace`,
+      kind: 'workspace',
       manuallyRegistered: false,
       discoveredFrom: [source],
     });

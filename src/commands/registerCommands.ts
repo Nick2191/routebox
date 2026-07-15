@@ -9,9 +9,9 @@ import {
 import type { FileSystemPort } from '../domain/discovery.js';
 import {
   isWorkspaceFileUri,
-  workspaceLabel,
-  type WorkspaceEntry,
-} from '../domain/workspaceEntry.js';
+  projectLabel,
+  type ProjectEntry,
+} from '../domain/projectEntry.js';
 import type { RefreshResult } from '../platform/discoveryCoordinator.js';
 import type { OpenMode, OpenResult } from '../platform/workspaceOpener.js';
 import { buildWorkspaceQuickPickItems } from '../ui/workspaceQuickPick.js';
@@ -36,10 +36,10 @@ export interface WorkspaceUi {
   pickDiscoveryRoot(): Promise<string | undefined>;
   pickDiscoveryRootToRemove(roots: readonly string[]): Promise<string | undefined>;
   pickWorkspace(
-    entries: readonly WorkspaceEntry[],
+    entries: readonly ProjectEntry[],
     currentUri?: string,
-  ): Promise<WorkspaceEntry | undefined>;
-  inputAlias(entry: WorkspaceEntry): Promise<string | undefined>;
+  ): Promise<ProjectEntry | undefined>;
+  inputAlias(entry: ProjectEntry): Promise<string | undefined>;
   showInfo(message: string): Promise<void>;
   showWarning(message: string): Promise<void>;
   showError(message: string): Promise<void>;
@@ -47,9 +47,9 @@ export interface WorkspaceUi {
 }
 
 interface RegistryCommandPort {
-  list(): WorkspaceEntry[];
-  get(id: string): WorkspaceEntry | undefined;
-  upsertManual(uri: string): Promise<unknown>;
+  list(): ProjectEntry[];
+  get(id: string): ProjectEntry | undefined;
+  upsertManualWorkspace(uri: string): Promise<unknown>;
   setAlias(id: string, alias: string): Promise<void>;
   resetAlias(id: string): Promise<void>;
   removeManual(id: string): Promise<void>;
@@ -90,8 +90,8 @@ export interface RegisterWorkspaceCommandsDependencies {
   commands?: CommandRegistry;
 }
 
-type EntryArgument = WorkspaceEntry | string | {
-  entry?: WorkspaceEntry;
+type EntryArgument = ProjectEntry | string | {
+  entry?: ProjectEntry;
   id?: string;
 };
 
@@ -136,9 +136,9 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
   }
 
   async pickWorkspace(
-    entries: readonly WorkspaceEntry[],
+    entries: readonly ProjectEntry[],
     currentUri?: string,
-  ): Promise<WorkspaceEntry | undefined> {
+  ): Promise<ProjectEntry | undefined> {
     const selected = await window.showQuickPick(
       buildWorkspaceQuickPickItems(entries, currentUri),
       {
@@ -150,10 +150,10 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
     return selected?.entry;
   }
 
-  async inputAlias(entry: WorkspaceEntry): Promise<string | undefined> {
+  async inputAlias(entry: ProjectEntry): Promise<string | undefined> {
     return await window.showInputBox({
       prompt: 'Enter a name for this workspace',
-      value: entry.alias ?? workspaceLabel(entry),
+      value: entry.alias ?? projectLabel(entry),
     });
   }
 
@@ -181,7 +181,7 @@ export function registerWorkspaceCommands(
   const roots = dependencies.roots ?? new VscodeDiscoveryRootSettings();
   const commandRegistry = dependencies.commands ?? vscodeCommands;
 
-  const selectEntry = async (argument?: EntryArgument): Promise<WorkspaceEntry | undefined> => {
+  const selectEntry = async (argument?: EntryArgument): Promise<ProjectEntry | undefined> => {
     if (argument === undefined) {
       return ui.pickWorkspace(
         dependencies.registry.list(),
@@ -208,7 +208,7 @@ export function registerWorkspaceCommands(
     if (selected.some(uri => !isWorkspaceFileUri(uri))) {
       throw new Error('Select a .code-workspace file.');
     }
-    for (const uri of selected) await dependencies.registry.upsertManual(uri);
+    for (const uri of selected) await dependencies.registry.upsertManualWorkspace(uri);
     if (selected.length > 0) dependencies.tree.refresh();
   };
 

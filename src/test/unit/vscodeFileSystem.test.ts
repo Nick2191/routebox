@@ -129,6 +129,7 @@ describe('VscodeRegistryStorage', () => {
     const entries = [{
       id: 'file:///one.code-workspace',
       uri: 'file:///one.code-workspace',
+      kind: 'workspace' as const,
       manuallyRegistered: true,
       discoveredFrom: [],
     }];

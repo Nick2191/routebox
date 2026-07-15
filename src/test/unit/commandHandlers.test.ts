@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { WorkspaceEntry } from '../../domain/workspaceEntry.js';
+import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
   commandIds,
   registerWorkspaceCommands,
   type WorkspaceUi,
 } from '../../commands/registerCommands.js';
 
-const alpha: WorkspaceEntry = {
+const alpha: ProjectEntry = {
   id: 'file:///work/alpha.code-workspace',
   uri: 'file:///work/alpha.code-workspace',
+  kind: 'workspace',
   manuallyRegistered: true,
   discoveredFrom: [],
 };
@@ -17,7 +18,7 @@ class FakeUi implements WorkspaceUi {
   workspaceFiles: readonly string[] = [];
   discoveryRoot: string | undefined;
   rootToRemove: string | undefined;
-  pickedWorkspace: WorkspaceEntry | undefined;
+  pickedWorkspace: ProjectEntry | undefined;
   alias: string | undefined;
   readonly infos: string[] = [];
   readonly warnings: string[] = [];
@@ -29,7 +30,7 @@ class FakeUi implements WorkspaceUi {
   pickDiscoveryRootToRemove(): Promise<string | undefined> {
     return Promise.resolve(this.rootToRemove);
   }
-  pickWorkspace(): Promise<WorkspaceEntry | undefined> {
+  pickWorkspace(): Promise<ProjectEntry | undefined> {
     return Promise.resolve(this.pickedWorkspace);
   }
   inputAlias(): Promise<string | undefined> { return Promise.resolve(this.alias); }
@@ -46,8 +47,8 @@ function createHarness(): {
   run: (id: string, argument?: unknown) => Promise<void>;
   ui: FakeUi;
   registry: {
-    entries: WorkspaceEntry[];
-    upsertManual: ReturnType<typeof vi.fn>;
+    entries: ProjectEntry[];
+    upsertManualWorkspace: ReturnType<typeof vi.fn>;
     setAlias: ReturnType<typeof vi.fn>;
     resetAlias: ReturnType<typeof vi.fn>;
     removeManual: ReturnType<typeof vi.fn>;
@@ -62,11 +63,11 @@ function createHarness(): {
   const ui = new FakeUi();
   const registry = {
     entries: [alpha],
-    list(): WorkspaceEntry[] { return this.entries; },
-    get(id: string): WorkspaceEntry | undefined {
+    list(): ProjectEntry[] { return this.entries; },
+    get(id: string): ProjectEntry | undefined {
       return this.entries.find(entry => entry.id === id);
     },
-    upsertManual: vi.fn(() => Promise.resolve(alpha)),
+    upsertManualWorkspace: vi.fn(() => Promise.resolve(alpha)),
     setAlias: vi.fn(() => Promise.resolve()),
     resetAlias: vi.fn(() => Promise.resolve()),
     removeManual: vi.fn(() => Promise.resolve()),
@@ -131,7 +132,7 @@ describe('workspace command handlers', () => {
 
     await run(commandIds.addWorkspace);
 
-    expect(registry.upsertManual.mock.calls).toHaveLength(0);
+    expect(registry.upsertManualWorkspace.mock.calls).toHaveLength(0);
     expect(ui.errors).toEqual(['Select a .code-workspace file.']);
     expect(tree.refresh.mock.calls).toHaveLength(0);
   });
@@ -145,7 +146,7 @@ describe('workspace command handlers', () => {
 
     await run(commandIds.addWorkspace);
 
-    expect(registry.upsertManual.mock.calls).toEqual([
+    expect(registry.upsertManualWorkspace.mock.calls).toEqual([
       ['file:///work/one.code-workspace'],
       ['file:///work/two.code-workspace'],
     ]);
