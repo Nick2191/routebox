@@ -48,14 +48,14 @@ function createProvider(): ProjectTreeProvider {
 }
 
 describe('ProjectTreeProvider', () => {
-  it('keeps the project kind icon while marking the current folder', () => {
+  it('uses the current-project icon while marking the current folder', () => {
     const item = createProvider().getChildren()[0];
 
     expect(item?.entry).toEqual(current);
     expect(item?.label).toBe('personal');
     expect(item?.description).toBe('Current');
     expect(item?.iconPath).toEqual(
-      new ThemeIcon('folder-opened', new ThemeColor('charts.blue')),
+      new ThemeIcon('pass-filled', new ThemeColor('charts.blue')),
     );
     expect(item?.contextValue).toBe('project.manual');
     expect(item?.collapsibleState).toBe(TreeItemCollapsibleState.None);
@@ -64,6 +64,24 @@ describe('ProjectTreeProvider', () => {
       title: 'Open Project',
       arguments: [current.id],
     });
+  });
+
+  it('uses the current-project icon for a current workspace', () => {
+    const currentWorkspace = project(
+      'file:///work/current.code-workspace',
+      'workspace',
+    );
+    const provider = new ProjectTreeProvider(
+      { list: (): ProjectEntry[] => [currentWorkspace] },
+      { currentProjectUri: (): string => currentWorkspace.uri },
+    );
+
+    const item = provider.getChildren()[0];
+
+    expect(item?.description).toBe('Current');
+    expect(item?.iconPath).toEqual(
+      new ThemeIcon('pass-filled', new ThemeColor('charts.blue')),
+    );
   });
 
   it('uses a stable workspace icon and discovered project context', () => {
