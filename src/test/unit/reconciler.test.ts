@@ -133,6 +133,27 @@ describe('ProjectReconciler', () => {
     });
   });
 
+  it('keeps an excluded workspace out of configured-source discovery', async () => {
+    const uri = 'file:///root/excluded.code-workspace';
+    await registry.replace([{
+      id: uri,
+      uri,
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///root'],
+    }]);
+    await registry.removeProject(uri);
+
+    await reconciler.reconcileSource('configured:file:///root', {
+      rootUri: 'file:///root',
+      status: 'ok',
+      workspaceUris: [uri],
+    });
+
+    expect(registry.get(uri)).toBeUndefined();
+    expect(registry.isExcluded(uri)).toBe(true);
+  });
+
   it('replaces only the scanned source provenance', async () => {
     const uri = 'file:///root/a.code-workspace';
     await reconciler.reconcileSource('configured:file:///root', {
@@ -277,6 +298,26 @@ describe('ProjectReconciler', () => {
       manuallyRegistered: false,
       discoveredFrom: ['configured:file:///root'],
     }]);
+  });
+
+  it('removes a missing active entry without excluding it', async () => {
+    const uri = 'file:///root/missing.code-workspace';
+    await registry.replace([{
+      id: uri,
+      uri,
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['configured:file:///root'],
+    }]);
+    fs.setKind(uri, 'missing');
+
+    await expect(reconciler.removeMissing()).resolves.toEqual({
+      removed: 1,
+      targetAccessErrors: [],
+    });
+
+    expect(registry.get(uri)).toBeUndefined();
+    expect(registry.isExcluded(uri)).toBe(false);
   });
 
   it('removes confirmed missing entries while retaining and reporting inaccessible targets', async () => {

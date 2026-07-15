@@ -33,7 +33,7 @@ export class ProjectReconciler {
       }
 
       for (const uri of discovered) {
-        if (entries.has(uri)) continue;
+        if (entries.has(uri) || this.registry.isExcluded(uri)) continue;
         entries.set(uri, {
           id: uri,
           uri,

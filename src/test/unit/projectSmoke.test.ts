@@ -97,6 +97,30 @@ describe('project smoke semantics', () => {
     })));
   });
 
+  it('keeps an excluded workspace out of current-project discovery', async () => {
+    const uri = 'file:///root/excluded.code-workspace';
+    const registry = new ProjectRegistry(new MemoryStorage());
+    await registry.load();
+    await registry.replace([{
+      id: uri,
+      uri,
+      kind: 'workspace',
+      manuallyRegistered: false,
+      discoveredFrom: ['current:file:///root/project'],
+    }]);
+    await registry.removeProject(uri);
+    const reconciler = new ProjectReconciler(registry, new NodeFileSystem());
+
+    await reconciler.reconcileSource('current:file:///root/project', {
+      rootUri: 'file:///root/project',
+      status: 'ok',
+      workspaceUris: [uri],
+    });
+
+    expect(registry.get(uri)).toBeUndefined();
+    expect(registry.isExcluded(uri)).toBe(true);
+  });
+
   it('registers, discovers, aliases, opens, cleans stale projects, and removes without deleting', async () => {
     const root = await mkdtemp(join(tmpdir(), 'workspace-atlas-smoke-'));
     temporaryRoots.push(root);
