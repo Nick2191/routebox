@@ -1,6 +1,6 @@
 import { Uri } from 'vscode';
 import { afterEach, describe, expect, it } from 'vitest';
-import { VscodeWorkspaceUi } from '../../commands/registerCommands.js';
+import { VscodeProjectUi } from '../../commands/registerCommands.js';
 import type { ProjectEntry, ProjectKind } from '../../domain/projectEntry.js';
 import { buildProjectQuickPickItems } from '../../ui/projectQuickPick.js';
 import { setOpenDialog, setQuickPick } from '../adapters/vscode.js';
@@ -81,14 +81,44 @@ describe('buildProjectQuickPickItems', () => {
       return Promise.resolve(undefined);
     });
 
-    await new VscodeWorkspaceUi().pickWorkspace([
+    await new VscodeProjectUi().pickProject([
       project('file:///work/a.code-workspace', 'workspace'),
     ]);
 
     expect(options).toEqual([{
-      placeHolder: 'Select a workspace',
+      placeHolder: 'Select a workspace or folder',
       matchOnDescription: true,
       matchOnDetail: true,
+    }]);
+  });
+
+  it('offers workspace-file and folder kinds when adding a project', async () => {
+    const items: unknown[] = [];
+    setQuickPick((value) => {
+      items.push(...value);
+      return Promise.resolve(value[1]);
+    });
+
+    await expect(new VscodeProjectUi().pickProjectKind()).resolves.toBe('folder');
+    expect(items).toEqual([
+      { label: 'Workspace File', kind: 'workspace' },
+      { label: 'Folder', kind: 'folder' },
+    ]);
+  });
+
+  it('opens a multi-select folder-only dialog for durable folder selections', async () => {
+    const options: unknown[] = [];
+    setOpenDialog(value => {
+      options.push(value);
+      return Promise.resolve([Uri.file('/work/My Folder')]);
+    });
+
+    await expect(new VscodeProjectUi().pickFolders())
+      .resolves.toEqual(['file:///work/My%20Folder']);
+    expect(options).toEqual([{
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: true,
     }]);
   });
 
@@ -99,13 +129,13 @@ describe('buildProjectQuickPickItems', () => {
   ])('encodes durable workspace selections for %s', async (path, expected) => {
     setOpenDialog(() => Promise.resolve([Uri.file(path)]));
 
-    await expect(new VscodeWorkspaceUi().pickWorkspaceFiles()).resolves.toEqual([expected]);
+    await expect(new VscodeProjectUi().pickWorkspaceFiles()).resolves.toEqual([expected]);
   });
 
   it('encodes durable discovery-root selections', async () => {
     setOpenDialog(() => Promise.resolve([Uri.file('/work/My Roots')]));
 
-    await expect(new VscodeWorkspaceUi().pickDiscoveryRoot())
+    await expect(new VscodeProjectUi().pickDiscoveryRoot())
       .resolves.toBe('file:///work/My%20Roots');
   });
 });

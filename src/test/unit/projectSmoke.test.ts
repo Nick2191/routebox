@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { URI, Utils } from 'vscode-uri';
 import {
   commandIds,
-  registerWorkspaceCommands,
-  type WorkspaceUi,
+  registerProjectCommands,
+  type ProjectUi,
 } from '../../commands/registerCommands.js';
 import {
   WorkspaceDiscoveryService,
@@ -15,7 +15,7 @@ import {
   type TargetKind,
 } from '../../domain/discovery.js';
 import { ProjectReconciler } from '../../domain/reconciler.js';
-import type { ProjectEntry } from '../../domain/projectEntry.js';
+import type { ProjectEntry, ProjectKind } from '../../domain/projectEntry.js';
 import {
   ProjectRegistry,
   type RegistryStorage,
@@ -61,14 +61,18 @@ class NodeFileSystem implements FileSystemPort {
   parent(uri: string): string { return Utils.dirname(URI.parse(uri)).toString(); }
 }
 
-class SmokeUi implements WorkspaceUi {
+class SmokeUi implements ProjectUi {
+  projectKind: ProjectKind | undefined;
   workspaceFiles: readonly string[] = [];
+  folders: readonly string[] = [];
   alias: string | undefined;
 
+  pickProjectKind(): Promise<ProjectKind | undefined> { return Promise.resolve(this.projectKind); }
   pickWorkspaceFiles(): Promise<readonly string[]> { return Promise.resolve(this.workspaceFiles); }
+  pickFolders(): Promise<readonly string[]> { return Promise.resolve(this.folders); }
   pickDiscoveryRoot(): Promise<string | undefined> { return Promise.resolve(undefined); }
   pickDiscoveryRootToRemove(): Promise<string | undefined> { return Promise.resolve(undefined); }
-  pickWorkspace(): Promise<ProjectEntry | undefined> { return Promise.resolve(undefined); }
+  pickProject(): Promise<ProjectEntry | undefined> { return Promise.resolve(undefined); }
   inputAlias(): Promise<string | undefined> { return Promise.resolve(this.alias); }
   showInfo(): Promise<void> { return Promise.resolve(); }
   showWarning(): Promise<void> { return Promise.resolve(); }
@@ -76,7 +80,7 @@ class SmokeUi implements WorkspaceUi {
   revealFile(): Promise<void> { return Promise.resolve(); }
 }
 
-describe('Stage 1 smoke semantics', () => {
+describe('project smoke semantics', () => {
   const temporaryRoots: string[] = [];
 
   afterEach(async () => {
@@ -86,12 +90,14 @@ describe('Stage 1 smoke semantics', () => {
     })));
   });
 
-  it('registers, discovers, aliases, opens, cleans stale entries, and removes without deleting', async () => {
+  it('registers, discovers, aliases, opens, cleans stale projects, and removes without deleting', async () => {
     const root = await mkdtemp(join(tmpdir(), 'workspace-atlas-smoke-'));
     temporaryRoots.push(root);
     const manualDirectory = join(root, 'manual');
+    const folderPath = join(root, 'folder');
     const discoveryDirectory = join(root, 'discovered');
     await mkdir(manualDirectory);
+    await mkdir(folderPath);
     await mkdir(discoveryDirectory);
     const manualPath = join(manualDirectory, 'manual.code-workspace');
     const discoveredPath = join(discoveryDirectory, 'discovered.code-workspace');
@@ -104,6 +110,7 @@ describe('Stage 1 smoke semantics', () => {
     const reconciler = new ProjectReconciler(registry, fs);
     const discovery = new WorkspaceDiscoveryService(fs);
     const manualUri = URI.file(manualPath).toString();
+    const folderUri = URI.file(folderPath).toString();
     const discoveredUri = URI.file(discoveredPath).toString();
     const discoveryRootUri = URI.file(discoveryDirectory).toString();
     const opened: [string, ...unknown[]][] = [];
@@ -120,13 +127,13 @@ describe('Stage 1 smoke semantics', () => {
     );
     const ui = new SmokeUi();
     const callbacks = new Map<string, (...args: unknown[]) => unknown>();
-    registerWorkspaceCommands({
+    registerProjectCommands({
       registry,
       coordinator: { refresh: () => Promise.resolve({ removed: 0, errors: [] }) },
       opener,
       tree: { refresh: () => undefined },
       fs,
-      current: { workspaceFileUri: () => undefined },
+      current: { currentProjectUri: () => undefined },
       ui,
       commands: {
         registerCommand(id, callback) {
@@ -141,10 +148,12 @@ describe('Stage 1 smoke semantics', () => {
 
     ui.workspaceFiles = [manualUri];
     await run(commandIds.addWorkspace);
+    ui.folders = [folderUri];
+    await run(commandIds.addFolder);
     const result = await discovery.scan(discoveryRootUri);
     await reconciler.reconcileSource(`configured:${discoveryRootUri}`, result);
     expect(registry.list().map(entry => entry.id).sort()).toEqual(
-      [manualUri, discoveredUri].sort(),
+      [manualUri, folderUri, discoveredUri].sort(),
     );
 
     ui.alias = 'Manual alias';
@@ -153,8 +162,8 @@ describe('Stage 1 smoke semantics', () => {
     await run(commandIds.resetName, manualUri);
     expect(registry.get(manualUri)?.alias).toBeUndefined();
 
-    for (const uri of [manualUri, discoveredUri]) {
-      await run(commandIds.switchWorkspace, uri);
+    for (const uri of [manualUri, folderUri, discoveredUri]) {
+      await run(commandIds.switchProject, uri);
       await run(commandIds.openNewWindow, uri);
     }
     expect(opened.map(call => call[2])).toEqual([
@@ -162,13 +171,17 @@ describe('Stage 1 smoke semantics', () => {
       { forceNewWindow: true },
       { forceReuseWindow: true },
       { forceNewWindow: true },
+      { forceReuseWindow: true },
+      { forceNewWindow: true },
     ]);
 
+    await rm(folderPath, { recursive: true });
     await rm(discoveryDirectory, { recursive: true });
     const missingRootResult = await discovery.scan(discoveryRootUri);
     expect(missingRootResult.status).toBe('error');
     await reconciler.reconcileSource(`configured:${discoveryRootUri}`, missingRootResult);
     await reconciler.removeMissing();
+    expect(registry.get(folderUri)).toBeUndefined();
     expect(registry.get(discoveredUri)).toBeUndefined();
 
     await run(commandIds.remove, manualUri);

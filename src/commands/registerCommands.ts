@@ -11,15 +11,18 @@ import {
   isWorkspaceFileUri,
   projectLabel,
   type ProjectEntry,
+  type ProjectKind,
 } from '../domain/projectEntry.js';
 import type { RefreshResult } from '../platform/discoveryCoordinator.js';
 import type { OpenMode, OpenResult } from '../platform/projectOpener.js';
 import { buildProjectQuickPickItems } from '../ui/projectQuickPick.js';
 
 export const commandIds = {
-  switchWorkspace: 'workspaceAtlas.switchWorkspace',
+  switchProject: 'workspaceAtlas.switchWorkspace',
   openNewWindow: 'workspaceAtlas.openWorkspaceInNewWindow',
+  addProject: 'workspaceAtlas.addProject',
   addWorkspace: 'workspaceAtlas.addWorkspace',
+  addFolder: 'workspaceAtlas.addFolder',
   addDiscoveryRoot: 'workspaceAtlas.addDiscoveryRoot',
   removeDiscoveryRoot: 'workspaceAtlas.removeDiscoveryRoot',
   refresh: 'workspaceAtlas.refreshWorkspaces',
@@ -31,11 +34,13 @@ export const commandIds = {
 
 export const openCurrentCommandId = 'workspaceAtlas.openEntryInCurrentWindow';
 
-export interface WorkspaceUi {
+export interface ProjectUi {
+  pickProjectKind(): Promise<ProjectKind | undefined>;
   pickWorkspaceFiles(): Promise<readonly string[]>;
+  pickFolders(): Promise<readonly string[]>;
   pickDiscoveryRoot(): Promise<string | undefined>;
   pickDiscoveryRootToRemove(roots: readonly string[]): Promise<string | undefined>;
-  pickWorkspace(
+  pickProject(
     entries: readonly ProjectEntry[],
     currentUri?: string,
   ): Promise<ProjectEntry | undefined>;
@@ -50,6 +55,7 @@ interface RegistryCommandPort {
   list(): ProjectEntry[];
   get(id: string): ProjectEntry | undefined;
   upsertManualWorkspace(uri: string): Promise<unknown>;
+  upsertManualFolder(uri: string): Promise<unknown>;
   setAlias(id: string, alias: string): Promise<void>;
   resetAlias(id: string): Promise<void>;
   removeManual(id: string): Promise<void>;
@@ -69,7 +75,7 @@ interface DiscoveryRootSettings {
 }
 
 interface TreeRefreshPort { refresh(): void }
-interface CurrentWorkspacePort { workspaceFileUri(): string | undefined }
+interface CurrentProjectPort { currentProjectUri(): string | undefined }
 
 interface CommandRegistry {
   registerCommand(
@@ -78,15 +84,15 @@ interface CommandRegistry {
   ): Disposable;
 }
 
-export interface RegisterWorkspaceCommandsDependencies {
+export interface RegisterProjectCommandsDependencies {
   registry: RegistryCommandPort;
   coordinator: CoordinatorCommandPort;
   opener: OpenerCommandPort;
   tree: TreeRefreshPort;
-  fs: Pick<FileSystemPort, 'canonicalize'>;
-  current: CurrentWorkspacePort;
+  fs: Pick<FileSystemPort, 'canonicalize' | 'statKind'>;
+  current: CurrentProjectPort;
   roots?: DiscoveryRootSettings;
-  ui?: WorkspaceUi;
+  ui?: ProjectUi;
   commands?: CommandRegistry;
 }
 
@@ -109,11 +115,31 @@ class VscodeDiscoveryRootSettings implements DiscoveryRootSettings {
   }
 }
 
-export class VscodeWorkspaceUi implements WorkspaceUi {
+export class VscodeProjectUi implements ProjectUi {
+  async pickProjectKind(): Promise<ProjectKind | undefined> {
+    const items = [
+      { label: 'Workspace File', kind: 'workspace' as const },
+      { label: 'Folder', kind: 'folder' as const },
+    ];
+    const selected = await window.showQuickPick(
+      items as unknown as readonly { label: string }[],
+    );
+    return (selected as typeof items[number] | undefined)?.kind;
+  }
+
   async pickWorkspaceFiles(): Promise<readonly string[]> {
     const selected = await window.showOpenDialog({
       canSelectMany: true,
       filters: { 'VS Code Workspaces': ['code-workspace'] },
+    });
+    return selected?.map(uri => uri.toString()) ?? [];
+  }
+
+  async pickFolders(): Promise<readonly string[]> {
+    const selected = await window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: true,
     });
     return selected?.map(uri => uri.toString()) ?? [];
   }
@@ -135,14 +161,14 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
     return selected?.uri;
   }
 
-  async pickWorkspace(
+  async pickProject(
     entries: readonly ProjectEntry[],
     currentUri?: string,
   ): Promise<ProjectEntry | undefined> {
     const selected = await window.showQuickPick(
       buildProjectQuickPickItems(entries, currentUri),
       {
-        placeHolder: 'Select a workspace',
+        placeHolder: 'Select a workspace or folder',
         matchOnDescription: true,
         matchOnDetail: true,
       },
@@ -152,7 +178,7 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
 
   async inputAlias(entry: ProjectEntry): Promise<string | undefined> {
     return await window.showInputBox({
-      prompt: 'Enter a name for this workspace',
+      prompt: 'Enter a name for this project',
       value: entry.alias ?? projectLabel(entry),
     });
   }
@@ -174,23 +200,23 @@ export class VscodeWorkspaceUi implements WorkspaceUi {
   }
 }
 
-export function registerWorkspaceCommands(
-  dependencies: RegisterWorkspaceCommandsDependencies,
+export function registerProjectCommands(
+  dependencies: RegisterProjectCommandsDependencies,
 ): Disposable[] {
-  const ui = dependencies.ui ?? new VscodeWorkspaceUi();
+  const ui = dependencies.ui ?? new VscodeProjectUi();
   const roots = dependencies.roots ?? new VscodeDiscoveryRootSettings();
   const commandRegistry = dependencies.commands ?? vscodeCommands;
 
   const selectEntry = async (argument?: EntryArgument): Promise<ProjectEntry | undefined> => {
     if (argument === undefined) {
-      return ui.pickWorkspace(
+      return ui.pickProject(
         dependencies.registry.list(),
-        dependencies.current.workspaceFileUri(),
+        dependencies.current.currentProjectUri(),
       );
     }
     const id = entryId(argument);
     const entry = id ? dependencies.registry.get(id) : undefined;
-    if (!entry) throw new Error('Workspace is no longer registered.');
+    if (!entry) throw new Error('Project is no longer registered.');
     return entry;
   };
 
@@ -199,17 +225,39 @@ export function registerWorkspaceCommands(
     if (!entry) return;
     const result = await dependencies.opener.open(entry.id, mode);
     dependencies.tree.refresh();
-    if (result.status === 'missing') await ui.showWarning('Workspace no longer exists.');
+    if (result.status === 'missing') await ui.showWarning('Project no longer exists.');
+    if (result.status === 'kind-mismatch') {
+      const expected = entry.kind === 'folder' ? 'folder' : 'workspace file';
+      await ui.showWarning(
+        `Project is no longer a ${expected}. Remove it from Workspace Atlas and add it again.`,
+      );
+    }
   };
 
   const addWorkspace = async (): Promise<void> => {
     const selected = (await ui.pickWorkspaceFiles())
       .map(uri => dependencies.fs.canonicalize(uri));
-    if (selected.some(uri => !isWorkspaceFileUri(uri))) {
-      throw new Error('Select a .code-workspace file.');
+    const kinds = await Promise.all(selected.map(uri => dependencies.fs.statKind(uri)));
+    if (selected.some((uri, index) => !isWorkspaceFileUri(uri) || kinds[index] !== 'file')) {
+      throw new Error('Select .code-workspace files only.');
     }
     for (const uri of selected) await dependencies.registry.upsertManualWorkspace(uri);
     if (selected.length > 0) dependencies.tree.refresh();
+  };
+
+  const addFolder = async (): Promise<void> => {
+    const selected = (await ui.pickFolders())
+      .map(uri => dependencies.fs.canonicalize(uri));
+    const kinds = await Promise.all(selected.map(uri => dependencies.fs.statKind(uri)));
+    if (kinds.some(kind => kind !== 'directory')) throw new Error('Select folders only.');
+    for (const uri of selected) await dependencies.registry.upsertManualFolder(uri);
+    if (selected.length > 0) dependencies.tree.refresh();
+  };
+
+  const addProject = async (): Promise<void> => {
+    const kind = await ui.pickProjectKind();
+    if (kind === 'workspace') await addWorkspace();
+    if (kind === 'folder') await addFolder();
   };
 
   const refreshAfterSettingsChange = async (): Promise<void> => {
@@ -243,7 +291,7 @@ export function registerWorkspaceCommands(
     const result = await dependencies.coordinator.refresh('manual');
     dependencies.tree.refresh();
     if (result.removed > 0) {
-      const suffix = result.removed === 1 ? 'workspace' : 'workspaces';
+      const suffix = result.removed === 1 ? 'project' : 'projects';
       await ui.showInfo(`Removed ${result.removed} missing ${suffix}.`);
     }
     if (result.errors.length > 0) {
@@ -292,9 +340,11 @@ export function registerWorkspaceCommands(
   ));
 
   return [
-    register(commandIds.switchWorkspace, argument => open('reuse', argument)),
+    register(commandIds.switchProject, argument => open('reuse', argument)),
     register(commandIds.openNewWindow, argument => open('new', argument)),
+    register(commandIds.addProject, addProject),
     register(commandIds.addWorkspace, addWorkspace),
+    register(commandIds.addFolder, addFolder),
     register(commandIds.addDiscoveryRoot, addDiscoveryRoot),
     register(commandIds.removeDiscoveryRoot, removeDiscoveryRoot),
     register(commandIds.refresh, refresh),
@@ -305,6 +355,9 @@ export function registerWorkspaceCommands(
     register(openCurrentCommandId, argument => open('reuse', argument)),
   ];
 }
+
+// Kept until extension wiring migrates to the project-oriented export in Task 6.
+export const registerWorkspaceCommands = registerProjectCommands;
 
 function entryId(argument: EntryArgument): string | undefined {
   if (typeof argument === 'string') return argument;
