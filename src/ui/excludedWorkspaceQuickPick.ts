@@ -72,7 +72,12 @@ export class VscodeExcludedWorkspacePicker implements ExcludedWorkspacePicker {
         if (finished || pendingRestoreIds.has(id)) return;
         pendingRestoreIds.add(id);
         try {
-          await options.restore(id);
+          try {
+            await options.restore(id);
+          } catch (error) {
+            if (finished) return;
+            report(error);
+          }
           if (finished) return;
           quickPick.items = buildExcludedWorkspaceQuickPickItems(options.list(), restoreButton);
           if (quickPick.items.length === 0) quickPick.hide();

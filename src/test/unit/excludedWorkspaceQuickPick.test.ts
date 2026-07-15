@@ -77,6 +77,33 @@ describe('buildExcludedWorkspaceQuickPickItems', () => {
 });
 
 describe('VscodeExcludedWorkspacePicker', () => {
+  it('reports and removes an exclusion that disappears before activation', async () => {
+    const entry = excluded('file:///work/atlas.code-workspace', 'Atlas');
+    const entries = [entry];
+    const picker = new TestQuickPick<ExcludedWorkspaceQuickPickItem>();
+    setCreateQuickPick(() => picker);
+    const list = vi.fn(() => entries);
+    const failure = new Error('Workspace is no longer excluded.');
+    const restore = vi.fn(() => Promise.reject(failure));
+    const reportError = vi.fn(() => Promise.resolve());
+
+    const shown = new VscodeExcludedWorkspacePicker().show({ list, restore, reportError });
+    const item = picker.items[0];
+    expect(item).toBeDefined();
+    if (!item) throw new Error('Expected an excluded workspace item.');
+
+    entries.splice(0);
+    picker.accept(item);
+
+    await shown;
+    expect(restore).toHaveBeenCalledWith(entry.id);
+    expect(reportError).toHaveBeenCalledWith(failure);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(picker.items).toEqual([]);
+    expect(picker.visible).toBe(false);
+    expect(picker.disposed).toBe(true);
+  });
+
   it('ignores duplicate restore triggers for the same exclusion while it is pending', async () => {
     const entry = excluded('file:///work/atlas.code-workspace', 'Atlas');
     const entries = [entry];
