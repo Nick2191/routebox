@@ -1,20 +1,30 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ProjectRegistry, type RegistryStorage } from '../../domain/projectRegistry.js';
-import type { ProjectEntry } from '../../domain/projectEntry.js';
+import {
+  ProjectRegistry,
+  type ProjectRegistryState,
+  type RegistryStorage,
+} from '../../domain/projectRegistry.js';
+import type { ExcludedWorkspace, ProjectEntry } from '../../domain/projectEntry.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
   failNext: Error | undefined;
-  readonly writes: ProjectEntry[][] = [];
+  readonly writes: ProjectRegistryState[] = [];
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  write(entries: readonly ProjectEntry[]): Promise<void> {
+  write(state: ProjectRegistryState): Promise<void> {
     if (this.failNext) {
       const error = this.failNext;
       this.failNext = undefined;
       return Promise.reject(error);
     }
-    const copy = entries.map(entry => ({ ...entry, discoveredFrom: [...entry.discoveredFrom] }));
+    const copy: ProjectRegistryState = {
+      entries: state.entries.map(entry => ({
+        ...entry,
+        discoveredFrom: [...entry.discoveredFrom],
+      })),
+      exclusions: state.exclusions.map(exclusion => ({ ...exclusion })),
+    };
     this.writes.push(copy);
     this.value = copy;
     return Promise.resolve();
@@ -28,13 +38,13 @@ class BlockingFirstWriteStorage extends MemoryStorage {
   private readonly firstReleased = new Promise<void>(resolve => { this.releaseFirst = resolve; });
   private writeCount = 0;
 
-  override async write(entries: readonly ProjectEntry[]): Promise<void> {
+  override async write(state: ProjectRegistryState): Promise<void> {
     this.writeCount += 1;
     if (this.writeCount === 1) {
       this.markFirstStarted();
       await this.firstReleased;
     }
-    await super.write(entries);
+    await super.write(state);
   }
 
   release(): void { this.releaseFirst(); }
@@ -60,6 +70,20 @@ describe('ProjectRegistry', () => {
     await registry.load();
   });
 
+  it('loads a legacy array and rewrites it as complete registry state', async () => {
+    storage.value = [discoveredEntry()];
+    registry = new ProjectRegistry(storage);
+
+    await registry.load();
+
+    expect(registry.list()).toEqual([discoveredEntry()]);
+    expect(registry.listExcluded()).toEqual([]);
+    expect(storage.writes.at(-1)).toEqual({
+      entries: [discoveredEntry()],
+      exclusions: [],
+    });
+  });
+
   it('persists one canonical entry for duplicate manual registration', async () => {
     await registry.upsertManualWorkspace('file:///work/a.code-workspace');
     await registry.upsertManualWorkspace('file:///work/a.code-workspace');
@@ -80,6 +104,113 @@ describe('ProjectRegistry', () => {
     await registry.replace([{ ...saved, discoveredFrom: ['configured:file:///work'] }]);
     await registry.removeManual(saved.id);
     expect(registry.get(saved.id)?.manuallyRegistered).toBe(false);
+  });
+
+  it('unregisters a manual-only project without excluding it', async () => {
+    const entry = await registry.upsertManualFolder('file:///work/folder');
+
+    await expect(registry.removeProject(entry.id)).resolves.toBe('removed');
+
+    expect(registry.list()).toEqual([]);
+    expect(registry.listExcluded()).toEqual([]);
+  });
+
+  it('moves a discovered workspace into exclusions with metadata', async () => {
+    const entry = { ...discoveredEntry(), alias: 'Alpha', lastOpenedAt: 42 };
+    await registry.replace([entry]);
+
+    await expect(registry.removeProject(entry.id)).resolves.toBe('excluded');
+
+    expect(registry.get(entry.id)).toBeUndefined();
+    expect(registry.listExcluded()).toEqual([{
+      id: entry.id,
+      uri: entry.uri,
+      kind: 'workspace',
+      alias: 'Alpha',
+      lastOpenedAt: 42,
+    }]);
+  });
+
+  it('excludes a workspace that is both manual and discovered', async () => {
+    const entry = { ...discoveredEntry(), manuallyRegistered: true };
+    await registry.replace([entry]);
+
+    await expect(registry.removeProject(entry.id)).resolves.toBe('excluded');
+
+    expect(registry.list()).toEqual([]);
+    expect(registry.listExcluded()).toEqual([{
+      id: entry.id,
+      uri: entry.uri,
+      kind: 'workspace',
+    }]);
+  });
+
+  it('reports whether a workspace is excluded', async () => {
+    const entry = discoveredEntry();
+    await registry.replace([entry]);
+    await registry.removeProject(entry.id);
+
+    expect(registry.isExcluded(entry.id)).toBe(true);
+    expect(registry.isExcluded('file:///work/missing.code-workspace')).toBe(false);
+  });
+
+  it('restores an exclusion as a manual workspace', async () => {
+    const entry = discoveredEntry();
+    await registry.replace([entry]);
+    await registry.removeProject(entry.id);
+
+    await expect(registry.restoreExcluded(entry.id)).resolves.toMatchObject({
+      id: entry.id,
+      manuallyRegistered: true,
+      discoveredFrom: [],
+    });
+    expect(registry.listExcluded()).toEqual([]);
+  });
+
+  it('clears an exclusion during regular manual workspace registration', async () => {
+    const entry = discoveredEntry();
+    await registry.replace([entry]);
+    await registry.removeProject(entry.id);
+
+    await expect(registry.upsertManualWorkspace(entry.uri)).resolves.toMatchObject({
+      id: entry.id,
+      manuallyRegistered: true,
+      discoveredFrom: [],
+    });
+
+    expect(registry.listExcluded()).toEqual([]);
+  });
+
+  it('rejects restoring an unknown exclusion', async () => {
+    await expect(registry.restoreExcluded('file:///work/missing.code-workspace'))
+      .rejects.toThrow();
+    expect(registry.list()).toEqual([]);
+    expect(registry.listExcluded()).toEqual([]);
+  });
+
+  it('returns defensive copies of exclusions', async () => {
+    const excluded: ExcludedWorkspace = {
+      id: 'file:///work/a.code-workspace',
+      uri: 'file:///work/a.code-workspace',
+      kind: 'workspace',
+      alias: 'Alpha',
+      lastOpenedAt: 42,
+    };
+    storage.value = { entries: [], exclusions: [excluded] };
+    registry = new ProjectRegistry(storage);
+    await registry.load();
+
+    excluded.alias = 'Changed outside';
+    const returned = registry.listExcluded()[0]!;
+    returned.alias = 'Changed after listing';
+
+    expect(registry.listExcluded()).toEqual([{
+      id: 'file:///work/a.code-workspace',
+      uri: 'file:///work/a.code-workspace',
+      kind: 'workspace',
+      alias: 'Alpha',
+      lastOpenedAt: 42,
+    }]);
   });
 
   it('isolates discovered sources loaded from storage', async () => {
@@ -213,10 +344,15 @@ describe('ProjectRegistry', () => {
       migrated: 1,
     });
     expect(registry.list()).toEqual([{
-      ...(storage.value as ProjectEntry[])[0],
+      id: 'file:///work/atlas.code-workspace',
+      uri: 'file:///work/atlas.code-workspace',
       kind: 'workspace',
+      alias: 'Atlas',
+      manuallyRegistered: true,
+      discoveredFrom: ['configured:file:///work'],
+      lastOpenedAt: 42,
     }]);
-    expect(storage.writes.at(-1)?.[0]).toMatchObject({
+    expect(storage.writes.at(-1)?.entries[0]).toMatchObject({
       kind: 'workspace',
       alias: 'Atlas',
       lastOpenedAt: 42,
@@ -261,6 +397,35 @@ describe('ProjectRegistry', () => {
     expect(registry.list()).toEqual([]);
   });
 
+  it('discards invalid persisted exclusions but loads valid ones', async () => {
+    const valid: ExcludedWorkspace = {
+      id: 'file:///work/valid.code-workspace',
+      uri: 'file:///work/valid.code-workspace',
+      kind: 'workspace',
+      alias: 'Valid',
+      lastOpenedAt: 42,
+    };
+    storage.value = {
+      entries: [],
+      exclusions: [
+        valid,
+        { ...valid, id: 'remote', uri: 'vscode-remote://host/remote.code-workspace' },
+        { ...valid, id: 'folder', uri: 'file:///work/folder' },
+        { ...valid, id: 'kind', kind: 'folder' },
+        { ...valid, id: 'alias', alias: 42 },
+        { ...valid, id: 'timestamp', lastOpenedAt: 'yesterday' },
+      ],
+    };
+    registry = new ProjectRegistry(storage);
+
+    await expect(registry.load()).resolves.toEqual({
+      discarded: 5,
+      reset: false,
+      migrated: 0,
+    });
+    expect(registry.listExcluded()).toEqual([valid]);
+  });
+
   it('rolls back memory when manual registration persistence fails', async () => {
     storage.failNext = new Error('write failed');
 
@@ -288,6 +453,36 @@ describe('ProjectRegistry', () => {
     await expect(registry.removeManual(entry.id)).rejects.toThrow('write failed');
 
     expect(registry.list()).toEqual(before);
+  });
+
+  it('rolls back entries and exclusions when exclusion persistence fails', async () => {
+    const entry = discoveredEntry();
+    await registry.replace([entry]);
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.removeProject(entry.id)).rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual([entry]);
+    expect(registry.listExcluded()).toEqual([]);
+  });
+
+  it('rolls back entries and exclusions when restore persistence fails', async () => {
+    const exclusion: ExcludedWorkspace = {
+      id: 'file:///work/a.code-workspace',
+      uri: 'file:///work/a.code-workspace',
+      kind: 'workspace',
+      alias: 'Alpha',
+      lastOpenedAt: 42,
+    };
+    storage.value = { entries: [], exclusions: [exclusion] };
+    registry = new ProjectRegistry(storage);
+    await registry.load();
+    storage.failNext = new Error('write failed');
+
+    await expect(registry.restoreExcluded(exclusion.id)).rejects.toThrow('write failed');
+
+    expect(registry.list()).toEqual([]);
+    expect(registry.listExcluded()).toEqual([exclusion]);
   });
 
   it('rolls back memory when replacement persistence fails', async () => {
@@ -327,7 +522,7 @@ describe('ProjectRegistry', () => {
     blockingStorage.release();
     await Promise.all([first, second]);
 
-    expect(blockingStorage.writes.map(write => write.map(entry => entry.id))).toEqual([
+    expect(blockingStorage.writes.map(write => write.entries.map(entry => entry.id))).toEqual([
       ['file:///work/a.code-workspace'],
       ['file:///work/a.code-workspace', 'file:///work/b.code-workspace'],
     ]);
@@ -335,6 +530,43 @@ describe('ProjectRegistry', () => {
       'file:///work/a.code-workspace',
       'file:///work/b.code-workspace',
     ]);
+  });
+
+  it('serializes exclusion mutations over complete registry state', async () => {
+    const entry = discoveredEntry();
+    const blockingStorage = new BlockingFirstWriteStorage();
+    blockingStorage.value = { entries: [entry], exclusions: [] };
+    registry = new ProjectRegistry(blockingStorage);
+    await registry.load();
+
+    const removal = registry.removeProject(entry.id);
+    await blockingStorage.firstStarted;
+    const restore = registry.restoreExcluded(entry.id);
+    blockingStorage.release();
+
+    await expect(removal).resolves.toBe('excluded');
+    await expect(restore).resolves.toMatchObject({
+      id: entry.id,
+      manuallyRegistered: true,
+      discoveredFrom: [],
+    });
+    expect(blockingStorage.writes).toEqual([
+      {
+        entries: [],
+        exclusions: [{ id: entry.id, uri: entry.uri, kind: 'workspace' }],
+      },
+      {
+        entries: [{
+          id: entry.id,
+          uri: entry.uri,
+          kind: 'workspace',
+          manuallyRegistered: true,
+          discoveredFrom: [],
+        }],
+        exclusions: [],
+      },
+    ]);
+    expect(registry.listExcluded()).toEqual([]);
   });
 
   it('continues with a successful mutation after a failed mutation', async () => {

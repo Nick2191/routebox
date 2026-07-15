@@ -3,9 +3,9 @@ import type { FileKind, FileSystemPort, TargetKind } from '../../domain/discover
 import { ProjectReconciler } from '../../domain/reconciler.js';
 import {
   ProjectRegistry,
+  type ProjectRegistryState,
   type RegistryStorage,
 } from '../../domain/projectRegistry.js';
-import type { ProjectEntry } from '../../domain/projectEntry.js';
 
 class MemoryStorage implements RegistryStorage {
   value: unknown;
@@ -15,14 +15,20 @@ class MemoryStorage implements RegistryStorage {
   } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  async write(entries: readonly ProjectEntry[]): Promise<void> {
+  async write(state: ProjectRegistryState): Promise<void> {
     if (this.blocker) {
       const blocker = this.blocker;
       this.blocker = undefined;
       blocker.started();
       await blocker.released;
     }
-    this.value = entries;
+    this.value = {
+      entries: state.entries.map(entry => ({
+        ...entry,
+        discoveredFrom: [...entry.discoveredFrom],
+      })),
+      exclusions: state.exclusions.map(exclusion => ({ ...exclusion })),
+    };
   }
 
   blockNextWrite(): { started: Promise<void>; release(): void } {

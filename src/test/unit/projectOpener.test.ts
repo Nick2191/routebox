@@ -4,6 +4,7 @@ import type { FileKind, FileSystemPort, TargetKind } from '../../domain/discover
 import type { ProjectEntry } from '../../domain/projectEntry.js';
 import {
   ProjectRegistry,
+  type ProjectRegistryState,
   type RegistryStorage,
 } from '../../domain/projectRegistry.js';
 import {
@@ -17,14 +18,20 @@ class MemoryStorage implements RegistryStorage {
   private blocker: { started(): void; released: Promise<void> } | undefined;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  async write(entries: readonly ProjectEntry[]): Promise<void> {
+  async write(state: ProjectRegistryState): Promise<void> {
     if (this.blocker) {
       const blocker = this.blocker;
       this.blocker = undefined;
       blocker.started();
       await blocker.released;
     }
-    this.value = entries;
+    this.value = {
+      entries: state.entries.map(entry => ({
+        ...entry,
+        discoveredFrom: [...entry.discoveredFrom],
+      })),
+      exclusions: state.exclusions.map(exclusion => ({ ...exclusion })),
+    };
   }
   blockNextWrite(): { started: Promise<void>; release(): void } {
     let markStarted!: () => void;

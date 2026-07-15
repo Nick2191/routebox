@@ -4,6 +4,7 @@ import {
   isWorkspaceFileUri,
   projectLabel,
   sortProjectEntries,
+  type ExcludedWorkspace,
   type ProjectEntry,
   type ProjectKind,
 } from '../../domain/projectEntry.js';
@@ -31,6 +32,17 @@ describe('project entries', () => {
       .toBe('My Folder');
     expect(projectLabel(project('file:///work/My%20Folder', 'folder', 'Personal')))
       .toBe('Personal');
+  });
+
+  it('derives labels for excluded workspaces', () => {
+    const excluded: ExcludedWorkspace = {
+      id: 'file:///work/alpha.code-workspace',
+      uri: 'file:///work/alpha.code-workspace',
+      kind: 'workspace',
+      alias: 'Atlas Alpha',
+    };
+    expect(projectLabel(excluded)).toBe('Atlas Alpha');
+    expect(projectLabel({ ...excluded, alias: undefined })).toBe('alpha');
   });
 
   it('handles Windows drive-letter file URIs', () => {

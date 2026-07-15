@@ -1,19 +1,34 @@
 import {
   isLocalFileUri,
   isWorkspaceFileUri,
+  type ExcludedWorkspace,
   type ProjectEntry,
   type ProjectKind,
 } from './projectEntry.js';
 
+export interface ProjectRegistryState {
+  entries: ProjectEntry[];
+  exclusions: ExcludedWorkspace[];
+}
+
 export interface RegistryStorage {
   read(): Promise<unknown>;
-  write(entries: readonly ProjectEntry[]): Promise<void>;
+  write(state: ProjectRegistryState): Promise<void>;
 }
 
 type LoadResult = { discarded: number; reset: boolean; migrated: number };
 
+interface MutableRegistryState {
+  entries: Map<string, ProjectEntry>;
+  exclusions: Map<string, ExcludedWorkspace>;
+}
+
 function copyEntry(entry: ProjectEntry): ProjectEntry {
   return { ...entry, discoveredFrom: [...entry.discoveredFrom] };
+}
+
+function copyExclusion(exclusion: ExcludedWorkspace): ExcludedWorkspace {
+  return { ...exclusion };
 }
 
 function normalizeEntry(value: unknown): { entry?: ProjectEntry; migrated: boolean } {
@@ -42,27 +57,71 @@ function normalizeEntry(value: unknown): { entry?: ProjectEntry; migrated: boole
   };
 }
 
+function normalizeExclusion(value: unknown): ExcludedWorkspace | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Partial<ExcludedWorkspace>;
+  const valid = typeof item.id === 'string'
+    && typeof item.uri === 'string'
+    && item.kind === 'workspace'
+    && (item.alias === undefined || typeof item.alias === 'string')
+    && (item.lastOpenedAt === undefined || typeof item.lastOpenedAt === 'number')
+    && isLocalFileUri(item.uri)
+    && isWorkspaceFileUri(item.uri);
+  return valid ? { ...(item as ExcludedWorkspace) } : undefined;
+}
+
 export class ProjectRegistry {
   private entries = new Map<string, ProjectEntry>();
+  private exclusions = new Map<string, ExcludedWorkspace>();
   private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly storage: RegistryStorage) {}
 
   async load(): Promise<LoadResult> {
     const stored = await this.storage.read();
-    if (stored !== undefined && !Array.isArray(stored)) {
+    const legacy = Array.isArray(stored);
+    const objectState = !legacy && stored && typeof stored === 'object'
+      ? stored as Partial<ProjectRegistryState>
+      : undefined;
+    if (stored !== undefined && !legacy
+      && (!objectState || !Array.isArray(objectState.entries)
+        || !Array.isArray(objectState.exclusions))) {
       this.entries = new Map();
+      this.exclusions = new Map();
       return { discarded: 0, reset: true, migrated: 0 };
     }
-    const normalized = (stored ?? []).map(normalizeEntry);
+    const storedEntries = legacy ? stored : objectState?.entries ?? [];
+    const storedExclusions = objectState?.exclusions ?? [];
+    const normalized = storedEntries.map(normalizeEntry);
     const valid = normalized.flatMap(result => result.entry ? [result.entry] : []);
+    const normalizedExclusions = storedExclusions.map(normalizeExclusion);
+    const validExclusions = normalizedExclusions.flatMap(exclusion => exclusion ? [exclusion] : []);
     const migrated = normalized.filter(result => result.migrated).length;
-    if (migrated > 0) await this.storage.write(valid.map(copyEntry));
+    if (legacy || migrated > 0) {
+      await this.storage.write({
+        entries: valid.map(copyEntry),
+        exclusions: validExclusions.map(copyExclusion),
+      });
+    }
     this.entries = new Map(valid.map(entry => [entry.id, copyEntry(entry)]));
-    return { discarded: normalized.length - valid.length, reset: false, migrated };
+    this.exclusions = new Map(
+      validExclusions.map(exclusion => [exclusion.id, copyExclusion(exclusion)]),
+    );
+    return {
+      discarded: normalized.length - valid.length
+        + normalizedExclusions.length - validExclusions.length,
+      reset: false,
+      migrated,
+    };
   }
 
   list(): ProjectEntry[] { return [...this.entries.values()].map(copyEntry); }
+
+  listExcluded(): ExcludedWorkspace[] {
+    return [...this.exclusions.values()].map(copyExclusion);
+  }
+
+  isExcluded(id: string): boolean { return this.exclusions.has(id); }
 
   get(id: string): ProjectEntry | undefined {
     const entry = this.entries.get(id);
@@ -88,9 +147,9 @@ export class ProjectRegistry {
 
   async setAlias(id: string, alias: string): Promise<void> {
     await this.mutate(candidate => {
-      const entry = this.require(candidate, id);
+      const entry = this.require(candidate.entries, id);
       const clean = alias.trim();
-      candidate.set(id, { ...entry, alias: clean || undefined });
+      candidate.entries.set(id, { ...entry, alias: clean || undefined });
     });
   }
 
@@ -98,29 +157,63 @@ export class ProjectRegistry {
 
   async removeManual(id: string): Promise<void> {
     await this.mutate(candidate => {
-      const entry = this.require(candidate, id);
-      if (entry.discoveredFrom.length === 0) candidate.delete(id);
-      else candidate.set(id, { ...entry, manuallyRegistered: false });
+      const entry = this.require(candidate.entries, id);
+      if (entry.discoveredFrom.length === 0) candidate.entries.delete(id);
+      else candidate.entries.set(id, { ...entry, manuallyRegistered: false });
+    });
+  }
+
+  removeProject(id: string): Promise<'removed' | 'excluded'> {
+    return this.mutate(candidate => {
+      const entry = this.require(candidate.entries, id);
+      candidate.entries.delete(id);
+      if (entry.kind === 'workspace' && entry.discoveredFrom.length > 0) {
+        const exclusion: ExcludedWorkspace = {
+          id: entry.id,
+          uri: entry.uri,
+          kind: 'workspace',
+          ...(entry.alias === undefined ? {} : { alias: entry.alias }),
+          ...(entry.lastOpenedAt === undefined ? {} : { lastOpenedAt: entry.lastOpenedAt }),
+        };
+        candidate.exclusions.set(id, exclusion);
+        return 'excluded';
+      }
+      return 'removed';
+    });
+  }
+
+  restoreExcluded(id: string): Promise<ProjectEntry> {
+    return this.mutate(candidate => {
+      const exclusion = candidate.exclusions.get(id);
+      if (!exclusion) throw new Error('Workspace is no longer excluded.');
+      const entry: ProjectEntry = {
+        ...exclusion,
+        manuallyRegistered: true,
+        discoveredFrom: [],
+      };
+      candidate.exclusions.delete(id);
+      candidate.entries.set(id, entry);
+      return copyEntry(entry);
     });
   }
 
   async replace(entries: readonly ProjectEntry[]): Promise<void> {
     const replacements = entries.map(copyEntry);
     await this.mutate(candidate => {
-      candidate.clear();
-      for (const entry of replacements) candidate.set(entry.id, copyEntry(entry));
+      candidate.entries.clear();
+      for (const entry of replacements) candidate.entries.set(entry.id, copyEntry(entry));
     });
   }
 
   async updateEntries(update: (entries: Map<string, ProjectEntry>) => void): Promise<void> {
-    await this.mutate(candidate => { update(candidate); });
+    await this.mutate(candidate => { update(candidate.entries); });
   }
 
   async remove(ids: readonly string[]): Promise<number> {
     return this.mutate(candidate => {
       let removed = 0;
       for (const id of ids) {
-        if (candidate.delete(id)) removed += 1;
+        if (candidate.entries.delete(id)) removed += 1;
       }
       return removed;
     });
@@ -128,21 +221,22 @@ export class ProjectRegistry {
 
   async markOpened(id: string, at: number): Promise<void> {
     await this.mutate(candidate => {
-      const entry = this.require(candidate, id);
-      candidate.set(id, { ...entry, lastOpenedAt: at });
+      const entry = this.require(candidate.entries, id);
+      candidate.entries.set(id, { ...entry, lastOpenedAt: at });
     });
   }
 
   private upsertManual(uri: string, kind: ProjectKind): Promise<ProjectEntry> {
     return this.mutate(candidate => {
-      const existing = candidate.get(uri);
+      const existing = candidate.entries.get(uri);
       if (existing && existing.kind !== kind) {
         throw new Error('The path is already registered as a different project type.');
       }
       const entry: ProjectEntry = existing
         ? { ...existing, manuallyRegistered: true }
         : { id: uri, uri, kind, manuallyRegistered: true, discoveredFrom: [] };
-      candidate.set(entry.id, entry);
+      candidate.entries.set(entry.id, entry);
+      if (kind === 'workspace') candidate.exclusions.delete(entry.id);
       return copyEntry(entry);
     });
   }
@@ -153,14 +247,23 @@ export class ProjectRegistry {
     return entry;
   }
 
-  private mutate<T>(change: (candidate: Map<string, ProjectEntry>) => T): Promise<T> {
+  private mutate<T>(change: (candidate: MutableRegistryState) => T): Promise<T> {
     const operation = this.mutationQueue.then(async () => {
-      const candidate = new Map(
-        [...this.entries].map(([id, entry]) => [id, copyEntry(entry)]),
-      );
+      const candidate: MutableRegistryState = {
+        entries: new Map(
+          [...this.entries].map(([id, entry]) => [id, copyEntry(entry)]),
+        ),
+        exclusions: new Map(
+          [...this.exclusions].map(([id, exclusion]) => [id, copyExclusion(exclusion)]),
+        ),
+      };
       const result = change(candidate);
-      await this.storage.write([...candidate.values()].map(copyEntry));
-      this.entries = candidate;
+      await this.storage.write({
+        entries: [...candidate.entries.values()].map(copyEntry),
+        exclusions: [...candidate.exclusions.values()].map(copyExclusion),
+      });
+      this.entries = candidate.entries;
+      this.exclusions = candidate.exclusions;
       return result;
     });
     this.mutationQueue = operation.then(() => undefined, () => undefined);

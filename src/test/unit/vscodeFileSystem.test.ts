@@ -139,12 +139,13 @@ describe('VscodeRegistryStorage', () => {
       manuallyRegistered: true,
       discoveredFrom: [],
     }];
+    const registryState = { entries, exclusions: [] };
 
     await expect(storage.read()).resolves.toBeUndefined();
-    await storage.write(entries);
+    await storage.write(registryState);
 
-    expect(state.updates).toEqual([['workspaceAtlas.registry.v1', entries]]);
-    await expect(storage.read()).resolves.toEqual(entries);
+    expect(state.updates).toEqual([['workspaceAtlas.registry.v1', registryState]]);
+    await expect(storage.read()).resolves.toEqual(registryState);
     expect(state.syncCalls).toEqual([]);
   });
 });

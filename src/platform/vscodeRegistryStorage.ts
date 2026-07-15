@@ -1,6 +1,5 @@
 import type { ExtensionContext } from 'vscode';
-import type { ProjectEntry } from '../domain/projectEntry.js';
-import type { RegistryStorage } from '../domain/projectRegistry.js';
+import type { ProjectRegistryState, RegistryStorage } from '../domain/projectRegistry.js';
 
 const registryKey = 'workspaceAtlas.registry.v1';
 
@@ -13,7 +12,7 @@ export class VscodeRegistryStorage implements RegistryStorage {
     return Promise.resolve(this.globalState.get(registryKey));
   }
 
-  async write(entries: readonly ProjectEntry[]): Promise<void> {
-    await this.globalState.update(registryKey, entries);
+  async write(state: ProjectRegistryState): Promise<void> {
+    await this.globalState.update(registryKey, state);
   }
 }

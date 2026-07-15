@@ -14,6 +14,14 @@ export interface ProjectEntry {
   lastOpenedAt?: number;
 }
 
+export interface ExcludedWorkspace {
+  id: string;
+  uri: string;
+  kind: 'workspace';
+  alias?: string;
+  lastOpenedAt?: number;
+}
+
 export function isLocalFileUri(value: string): boolean {
   return Uri.parse(value).scheme === 'file';
 }
@@ -22,7 +30,9 @@ export function isWorkspaceFileUri(uri: string): boolean {
   return posix.extname(Uri.parse(uri).path).toLowerCase() === '.code-workspace';
 }
 
-export function projectLabel(entry: ProjectEntry): string {
+type ProjectLabelSource = Pick<ProjectEntry, 'uri' | 'kind' | 'alias'>;
+
+export function projectLabel(entry: ProjectLabelSource): string {
   if (entry.alias?.trim()) return entry.alias.trim();
   const name = posix.basename(Uri.parse(entry.uri).path);
   return entry.kind === 'workspace' ? name.replace(/\.code-workspace$/i, '') : name;

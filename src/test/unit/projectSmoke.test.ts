@@ -18,6 +18,7 @@ import { ProjectReconciler } from '../../domain/reconciler.js';
 import type { ProjectEntry, ProjectKind } from '../../domain/projectEntry.js';
 import {
   ProjectRegistry,
+  type ProjectRegistryState,
   type RegistryStorage,
 } from '../../domain/projectRegistry.js';
 import { ProjectOpener } from '../../platform/projectOpener.js';
@@ -26,8 +27,14 @@ class MemoryStorage implements RegistryStorage {
   value: unknown;
 
   read(): Promise<unknown> { return Promise.resolve(this.value); }
-  write(entries: readonly ProjectEntry[]): Promise<void> {
-    this.value = entries;
+  write(state: ProjectRegistryState): Promise<void> {
+    this.value = {
+      entries: state.entries.map(entry => ({
+        ...entry,
+        discoveredFrom: [...entry.discoveredFrom],
+      })),
+      exclusions: state.exclusions.map(exclusion => ({ ...exclusion })),
+    };
     return Promise.resolve();
   }
 }
