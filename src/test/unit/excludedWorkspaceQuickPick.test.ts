@@ -18,6 +18,15 @@ const excluded = (uri: string, alias?: string): ExcludedWorkspace => ({
   ...(alias === undefined ? {} : { alias }),
 });
 
+const deferred = <T = void>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} => {
+  let resolvePromise!: (value: T) => void;
+  const promise = new Promise<T>(resolve => { resolvePromise = resolve; });
+  return { promise, resolve: resolvePromise };
+};
+
 afterEach(() => {
   setCreateQuickPick(() => new TestQuickPick());
 });
@@ -68,6 +77,71 @@ describe('buildExcludedWorkspaceQuickPickItems', () => {
 });
 
 describe('VscodeExcludedWorkspacePicker', () => {
+  it('ignores duplicate restore triggers for the same exclusion while it is pending', async () => {
+    const entry = excluded('file:///work/atlas.code-workspace', 'Atlas');
+    const entries = [entry];
+    const pendingRestore = deferred();
+    const picker = new TestQuickPick<ExcludedWorkspaceQuickPickItem>();
+    setCreateQuickPick(() => picker);
+    const list = vi.fn(() => entries);
+    const restore = vi.fn(async (id: string) => {
+      await pendingRestore.promise;
+      entries.splice(entries.findIndex(value => value.id === id), 1);
+    });
+    const reportError = vi.fn(() => Promise.resolve());
+
+    const shown = new VscodeExcludedWorkspacePicker().show({ list, restore, reportError });
+    const item = picker.items[0];
+    const button = item?.buttons?.[0];
+    expect(item).toBeDefined();
+    expect(button).toBeDefined();
+    if (!item || !button) throw new Error('Expected an excluded workspace restore button.');
+
+    picker.accept(item);
+    picker.triggerItemButton(item, button);
+
+    expect(restore).toHaveBeenCalledTimes(1);
+    pendingRestore.resolve();
+    await shown;
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it('does not touch or report errors from a restore that finishes after dismissal', async () => {
+    const entry = excluded('file:///work/atlas.code-workspace', 'Atlas');
+    const pendingRestore = deferred();
+    const picker = new TestQuickPick<ExcludedWorkspaceQuickPickItem>();
+    setCreateQuickPick(() => picker);
+    const restore = vi.fn(() => pendingRestore.promise);
+    const reportError = vi.fn(() => Promise.resolve());
+
+    const shown = new VscodeExcludedWorkspacePicker().show({
+      list: () => [entry],
+      restore,
+      reportError,
+    });
+    const item = picker.items[0];
+    const button = item?.buttons?.[0];
+    expect(item).toBeDefined();
+    expect(button).toBeDefined();
+    if (!item || !button) throw new Error('Expected an excluded workspace restore button.');
+
+    picker.triggerItemButton(item, button);
+    expect(restore).toHaveBeenCalledOnce();
+    picker.hide();
+
+    await shown;
+    expect(picker.disposed).toBe(true);
+    expect(picker.listenerCount).toBe(0);
+
+    pendingRestore.resolve();
+    await pendingRestore.promise;
+    await Promise.resolve();
+
+    expect(picker.postDisposalTouches).toBe(0);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
   it('restores the keyboard-selected exclusion and closes when none remain', async () => {
     const entry = excluded('file:///work/atlas.code-workspace', 'Atlas');
     const entries = [entry];

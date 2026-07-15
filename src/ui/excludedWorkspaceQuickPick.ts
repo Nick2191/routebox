@@ -55,6 +55,7 @@ export class VscodeExcludedWorkspacePicker implements ExcludedWorkspacePicker {
 
     await new Promise<void>(resolve => {
       const subscriptions: Disposable[] = [];
+      const pendingRestoreIds = new Set<string>();
       let finished = false;
       const finish = (): void => {
         if (finished) return;
@@ -67,9 +68,17 @@ export class VscodeExcludedWorkspacePicker implements ExcludedWorkspacePicker {
         void options.reportError(error).catch(() => undefined);
       };
       const restore = async (item: ExcludedWorkspaceQuickPickItem): Promise<void> => {
-        await options.restore(item.exclusion.id);
-        quickPick.items = buildExcludedWorkspaceQuickPickItems(options.list(), restoreButton);
-        if (quickPick.items.length === 0) quickPick.hide();
+        const id = item.exclusion.id;
+        if (finished || pendingRestoreIds.has(id)) return;
+        pendingRestoreIds.add(id);
+        try {
+          await options.restore(id);
+          if (finished) return;
+          quickPick.items = buildExcludedWorkspaceQuickPickItems(options.list(), restoreButton);
+          if (quickPick.items.length === 0) quickPick.hide();
+        } finally {
+          pendingRestoreIds.delete(id);
+        }
       };
       const handleRestore = (item: ExcludedWorkspaceQuickPickItem | undefined): void => {
         if (!item) return;

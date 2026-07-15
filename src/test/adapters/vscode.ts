@@ -37,6 +37,8 @@ export interface Disposable { dispose(): void }
 
 export class EventEmitter<T> implements Disposable {
   private readonly listeners = new Set<(value: T) => unknown>();
+  get listenerCount(): number { return this.listeners.size; }
+
   readonly event = (listener: (value: T) => unknown): Disposable => {
     this.listeners.add(listener);
     return { dispose: (): void => { this.listeners.delete(listener); } };
@@ -99,12 +101,13 @@ export interface QuickPick<T extends QuickPickItem> extends Disposable {
 }
 
 export class TestQuickPick<T extends QuickPickItem> implements QuickPick<T> {
-  items: readonly T[] = [];
+  private currentItems: readonly T[] = [];
   selectedItems: readonly T[] = [];
   placeholder?: string;
   matchOnDetail = false;
   visible = false;
   disposed = false;
+  postDisposalTouches = 0;
   private readonly acceptEmitter = new EventEmitter<void>();
   private readonly buttonEmitter = new EventEmitter<QuickPickItemButtonEvent<T>>();
   private readonly hideEmitter = new EventEmitter<void>();
@@ -113,9 +116,29 @@ export class TestQuickPick<T extends QuickPickItem> implements QuickPick<T> {
   readonly onDidTriggerItemButton = this.buttonEmitter.event;
   readonly onDidHide = this.hideEmitter.event;
 
+  get items(): readonly T[] { return this.currentItems; }
+
+  set items(items: readonly T[]) {
+    if (this.disposed) {
+      this.postDisposalTouches += 1;
+      throw new Error('Quick Pick items changed after disposal');
+    }
+    this.currentItems = items;
+  }
+
+  get listenerCount(): number {
+    return this.acceptEmitter.listenerCount
+      + this.buttonEmitter.listenerCount
+      + this.hideEmitter.listenerCount;
+  }
+
   show(): void { this.visible = true; }
 
   hide(): void {
+    if (this.disposed) {
+      this.postDisposalTouches += 1;
+      throw new Error('Quick Pick hidden after disposal');
+    }
     if (!this.visible) return;
     this.visible = false;
     this.hideEmitter.fire();
