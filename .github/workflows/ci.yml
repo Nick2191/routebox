@@ -43,6 +43,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run package
       - name: Inspect package inputs
         shell: bash
         run: |
