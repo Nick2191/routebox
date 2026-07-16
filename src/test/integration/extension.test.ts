@@ -39,6 +39,8 @@ suite('Routebox extension', () => {
   test('contributes its complete workbench surface without keybindings', () => {
     const extension = routeboxExtension();
     const manifest = extension.packageJSON as Record<string, unknown>;
+    assert.equal(manifest.version, '1.0.0');
+    assert.equal('preview' in manifest, false);
     assert.deepEqual(manifest.repository, {
       type: 'git',
       url: 'https://github.com/Nick2191/routebox.git',

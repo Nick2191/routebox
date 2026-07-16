@@ -2,9 +2,8 @@
   "name": "routebox",
   "displayName": "Routebox",
   "description": "Organize and quickly switch between VS Code workspace files and folders.",
-  "version": "0.1.0",
-  "preview": true,
-  "publisher": "nick",
+  "version": "1.0.0",
+  "publisher": "nick2191",
   "license": "MIT",
   "repository": {
     "type": "git",
