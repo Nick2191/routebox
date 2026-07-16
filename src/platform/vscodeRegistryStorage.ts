@@ -1,7 +1,7 @@
 import type { ExtensionContext } from 'vscode';
 import type { ProjectRegistryState, RegistryStorage } from '../domain/projectRegistry.js';
 
-const registryKey = 'workspaceAtlas.registry.v1';
+const registryKey = 'routebox.registry.v1';
 
 type GlobalState = Pick<ExtensionContext['globalState'], 'get' | 'update'>;
 

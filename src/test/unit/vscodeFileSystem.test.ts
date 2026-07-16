@@ -144,7 +144,7 @@ describe('VscodeRegistryStorage', () => {
     await expect(storage.read()).resolves.toBeUndefined();
     await storage.write(registryState);
 
-    expect(state.updates).toEqual([['workspaceAtlas.registry.v1', registryState]]);
+    expect(state.updates).toEqual([['routebox.registry.v1', registryState]]);
     await expect(storage.read()).resolves.toEqual(registryState);
     expect(state.syncCalls).toEqual([]);
   });

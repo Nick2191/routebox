@@ -1,7 +1,7 @@
 {
-  "name": "workspace-atlas",
-  "displayName": "Workspace Atlas",
-  "description": "Discover, organize, and switch between VS Code workspace files and folders.",
+  "name": "routebox",
+  "displayName": "Routebox",
+  "description": "Organize and quickly switch between VS Code workspace files and folders.",
   "version": "0.1.0",
   "preview": true,
   "publisher": "nick",
@@ -26,160 +26,160 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "workspaceAtlas",
-          "title": "Workspace Atlas",
-          "icon": "resources/workspace-routes-thin.svg"
+          "id": "routebox",
+          "title": "Routebox",
+          "icon": "resources/routebox.svg"
         }
       ]
     },
     "views": {
-      "workspaceAtlas": [
+      "routebox": [
         {
-          "id": "workspaceAtlas.workspaces",
+          "id": "routebox.projects",
           "name": "Projects"
         }
       ]
     },
     "commands": [
       {
-        "command": "workspaceAtlas.switchWorkspace",
-        "title": "Workspace Atlas: Switch Project"
+        "command": "routebox.switchProject",
+        "title": "Routebox: Switch Project"
       },
       {
-        "command": "workspaceAtlas.openWorkspaceInNewWindow",
-        "title": "Workspace Atlas: Open Project in New Window",
+        "command": "routebox.openProjectInNewWindow",
+        "title": "Routebox: Open Project in New Window",
         "icon": "$(empty-window)"
       },
       {
-        "command": "workspaceAtlas.addProject",
-        "title": "Workspace Atlas: Add Project...",
+        "command": "routebox.addProject",
+        "title": "Routebox: Add Project...",
         "icon": "$(add)"
       },
       {
-        "command": "workspaceAtlas.addWorkspace",
-        "title": "Workspace Atlas: Add Workspace..."
+        "command": "routebox.addWorkspace",
+        "title": "Routebox: Add Workspace..."
       },
       {
-        "command": "workspaceAtlas.addFolder",
-        "title": "Workspace Atlas: Add Folder..."
+        "command": "routebox.addFolder",
+        "title": "Routebox: Add Folder..."
       },
       {
-        "command": "workspaceAtlas.addDiscoveryRoot",
-        "title": "Workspace Atlas: Add Discovery Root..."
+        "command": "routebox.addDiscoveryRoot",
+        "title": "Routebox: Add Discovery Root..."
       },
       {
-        "command": "workspaceAtlas.removeDiscoveryRoot",
-        "title": "Workspace Atlas: Remove Discovery Root..."
+        "command": "routebox.removeDiscoveryRoot",
+        "title": "Routebox: Remove Discovery Root..."
       },
       {
-        "command": "workspaceAtlas.refreshWorkspaces",
-        "title": "Workspace Atlas: Refresh Projects",
+        "command": "routebox.refreshProjects",
+        "title": "Routebox: Refresh Projects",
         "icon": "$(refresh)"
       },
       {
-        "command": "workspaceAtlas.showExcludedWorkspaces",
-        "title": "Workspace Atlas: Show Excluded Workspaces",
+        "command": "routebox.showExcludedWorkspaces",
+        "title": "Routebox: Show Excluded Workspaces",
         "icon": "$(eye-closed)"
       },
       {
-        "command": "workspaceAtlas.renameWorkspace",
-        "title": "Workspace Atlas: Rename Project"
+        "command": "routebox.renameProject",
+        "title": "Routebox: Rename Project"
       },
       {
-        "command": "workspaceAtlas.resetWorkspaceName",
-        "title": "Workspace Atlas: Reset Project Name"
+        "command": "routebox.resetProjectName",
+        "title": "Routebox: Reset Project Name"
       },
       {
-        "command": "workspaceAtlas.removeWorkspace",
-        "title": "Workspace Atlas: Remove from Workspace Atlas",
+        "command": "routebox.removeProject",
+        "title": "Routebox: Remove from Routebox",
         "icon": "$(trash)"
       },
       {
-        "command": "workspaceAtlas.revealWorkspaceFile",
-        "title": "Workspace Atlas: Reveal in File Manager"
+        "command": "routebox.revealProject",
+        "title": "Routebox: Reveal in File Manager"
       },
       {
-        "command": "workspaceAtlas.openEntryInCurrentWindow",
+        "command": "routebox.openProjectInCurrentWindow",
         "title": "Open Project"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "workspaceAtlas.openEntryInCurrentWindow",
+          "command": "routebox.openProjectInCurrentWindow",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "workspaceAtlas.addProject",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.addProject",
+          "when": "view == routebox.projects",
           "group": "navigation@1"
         },
         {
-          "command": "workspaceAtlas.refreshWorkspaces",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.refreshProjects",
+          "when": "view == routebox.projects",
           "group": "navigation@2"
         },
         {
-          "command": "workspaceAtlas.showExcludedWorkspaces",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.showExcludedWorkspaces",
+          "when": "view == routebox.projects",
           "group": "navigation@3"
         },
         {
-          "command": "workspaceAtlas.addDiscoveryRoot",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.addDiscoveryRoot",
+          "when": "view == routebox.projects",
           "group": "management@1"
         },
         {
-          "command": "workspaceAtlas.removeDiscoveryRoot",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.removeDiscoveryRoot",
+          "when": "view == routebox.projects",
           "group": "management@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "workspaceAtlas.openWorkspaceInNewWindow",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.openProjectInNewWindow",
+          "when": "view == routebox.projects",
           "group": "inline@1"
         },
         {
-          "command": "workspaceAtlas.removeWorkspace",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.removeProject",
+          "when": "view == routebox.projects",
           "group": "inline@2"
         },
         {
-          "command": "workspaceAtlas.renameWorkspace",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.renameProject",
+          "when": "view == routebox.projects",
           "group": "manage@1"
         },
         {
-          "command": "workspaceAtlas.resetWorkspaceName",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.resetProjectName",
+          "when": "view == routebox.projects",
           "group": "manage@2"
         },
         {
-          "command": "workspaceAtlas.removeWorkspace",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.removeProject",
+          "when": "view == routebox.projects",
           "group": "manage@3"
         },
         {
-          "command": "workspaceAtlas.revealWorkspaceFile",
-          "when": "view == workspaceAtlas.workspaces",
+          "command": "routebox.revealProject",
+          "when": "view == routebox.projects",
           "group": "navigation@1"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "workspaceAtlas.workspaces",
-        "contents": "No projects registered.\n[Add Project](command:workspaceAtlas.addProject)\n[Add Discovery Root](command:workspaceAtlas.addDiscoveryRoot)"
+        "view": "routebox.projects",
+        "contents": "No projects registered.\n[Add Project](command:routebox.addProject)\n[Add Discovery Root](command:routebox.addDiscoveryRoot)"
       }
     ],
     "configuration": {
-      "title": "Workspace Atlas",
+      "title": "Routebox",
       "properties": {
-        "workspaceAtlas.discoveryRoots": {
+        "routebox.discoveryRoots": {
           "type": "array",
           "scope": "machine-overridable",
           "default": [],

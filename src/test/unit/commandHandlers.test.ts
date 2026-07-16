@@ -474,7 +474,7 @@ describe('project command handlers', () => {
     await harness.run(commandIds.switchProject, folder.id);
 
     expect(harness.ui.warnings).toEqual([
-      'Project is no longer a folder. Remove it from Workspace Atlas and add it again.',
+      'Project is no longer a folder. Remove it from Routebox and add it again.',
     ]);
     expect(harness.opener.open).toHaveBeenCalledOnce();
     expect(harness.tree.refresh).toHaveBeenCalledOnce();

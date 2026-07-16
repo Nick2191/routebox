@@ -60,7 +60,7 @@ describe('ProjectTreeProvider', () => {
     expect(item?.contextValue).toBe('project.manual');
     expect(item?.collapsibleState).toBe(TreeItemCollapsibleState.None);
     expect(item?.command).toEqual({
-      command: 'workspaceAtlas.openEntryInCurrentWindow',
+      command: 'routebox.openProjectInCurrentWindow',
       title: 'Open Project',
       arguments: [current.id],
     });
