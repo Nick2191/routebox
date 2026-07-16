@@ -1,83 +1,89 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 
-suite('Workspace Atlas extension', () => {
+suite('Routebox extension', () => {
   test('activates and registers its public commands', async () => {
-    const extension = vscode.extensions.getExtension('nick.workspace-atlas');
+    const extension = vscode.extensions.getExtension('nick.routebox');
     assert.ok(extension);
     await extension.activate();
     const commands = await vscode.commands.getCommands(true);
     for (const id of [
-      'workspaceAtlas.switchWorkspace',
-      'workspaceAtlas.openWorkspaceInNewWindow',
-      'workspaceAtlas.addProject',
-      'workspaceAtlas.addWorkspace',
-      'workspaceAtlas.addFolder',
-      'workspaceAtlas.addDiscoveryRoot',
-      'workspaceAtlas.removeDiscoveryRoot',
-      'workspaceAtlas.refreshWorkspaces',
-      'workspaceAtlas.showExcludedWorkspaces',
-      'workspaceAtlas.renameWorkspace',
-      'workspaceAtlas.resetWorkspaceName',
-      'workspaceAtlas.removeWorkspace',
-      'workspaceAtlas.revealWorkspaceFile',
-      'workspaceAtlas.openEntryInCurrentWindow',
+      'routebox.switchProject',
+      'routebox.openProjectInNewWindow',
+      'routebox.addProject',
+      'routebox.addWorkspace',
+      'routebox.addFolder',
+      'routebox.addDiscoveryRoot',
+      'routebox.removeDiscoveryRoot',
+      'routebox.refreshProjects',
+      'routebox.showExcludedWorkspaces',
+      'routebox.renameProject',
+      'routebox.resetProjectName',
+      'routebox.removeProject',
+      'routebox.revealProject',
+      'routebox.openProjectInCurrentWindow',
     ]) assert.ok(commands.includes(id), `${id} was not registered`);
   });
 
   test('contributes its complete workbench surface without keybindings', () => {
-    const extension = vscode.extensions.getExtension('nick.workspace-atlas');
+    const extension = vscode.extensions.getExtension('nick.routebox');
     assert.ok(extension);
     const contributes = (extension.packageJSON as { contributes?: Record<string, unknown> })
       .contributes;
     assert.ok(contributes);
     assert.deepEqual(contributes.views, {
-      workspaceAtlas: [{ id: 'workspaceAtlas.workspaces', name: 'Projects' }],
+      routebox: [{ id: 'routebox.projects', name: 'Projects' }],
     });
     assert.deepEqual(contributes.commands, [
-      { command: 'workspaceAtlas.switchWorkspace', title: 'Workspace Atlas: Switch Project' },
-      { command: 'workspaceAtlas.openWorkspaceInNewWindow', title: 'Workspace Atlas: Open Project in New Window', icon: '$(empty-window)' },
-      { command: 'workspaceAtlas.addProject', title: 'Workspace Atlas: Add Project...', icon: '$(add)' },
-      { command: 'workspaceAtlas.addWorkspace', title: 'Workspace Atlas: Add Workspace...' },
-      { command: 'workspaceAtlas.addFolder', title: 'Workspace Atlas: Add Folder...' },
-      { command: 'workspaceAtlas.addDiscoveryRoot', title: 'Workspace Atlas: Add Discovery Root...' },
-      { command: 'workspaceAtlas.removeDiscoveryRoot', title: 'Workspace Atlas: Remove Discovery Root...' },
-      { command: 'workspaceAtlas.refreshWorkspaces', title: 'Workspace Atlas: Refresh Projects', icon: '$(refresh)' },
-      { command: 'workspaceAtlas.showExcludedWorkspaces', title: 'Workspace Atlas: Show Excluded Workspaces', icon: '$(eye-closed)' },
-      { command: 'workspaceAtlas.renameWorkspace', title: 'Workspace Atlas: Rename Project' },
-      { command: 'workspaceAtlas.resetWorkspaceName', title: 'Workspace Atlas: Reset Project Name' },
-      { command: 'workspaceAtlas.removeWorkspace', title: 'Workspace Atlas: Remove from Workspace Atlas', icon: '$(trash)' },
-      { command: 'workspaceAtlas.revealWorkspaceFile', title: 'Workspace Atlas: Reveal in File Manager' },
-      { command: 'workspaceAtlas.openEntryInCurrentWindow', title: 'Open Project' },
+      { command: 'routebox.switchProject', title: 'Routebox: Switch Project' },
+      { command: 'routebox.openProjectInNewWindow', title: 'Routebox: Open Project in New Window', icon: '$(empty-window)' },
+      { command: 'routebox.addProject', title: 'Routebox: Add Project...', icon: '$(add)' },
+      { command: 'routebox.addWorkspace', title: 'Routebox: Add Workspace...' },
+      { command: 'routebox.addFolder', title: 'Routebox: Add Folder...' },
+      { command: 'routebox.addDiscoveryRoot', title: 'Routebox: Add Discovery Root...' },
+      { command: 'routebox.removeDiscoveryRoot', title: 'Routebox: Remove Discovery Root...' },
+      { command: 'routebox.refreshProjects', title: 'Routebox: Refresh Projects', icon: '$(refresh)' },
+      { command: 'routebox.showExcludedWorkspaces', title: 'Routebox: Show Excluded Workspaces', icon: '$(eye-closed)' },
+      { command: 'routebox.renameProject', title: 'Routebox: Rename Project' },
+      { command: 'routebox.resetProjectName', title: 'Routebox: Reset Project Name' },
+      { command: 'routebox.removeProject', title: 'Routebox: Remove from Routebox', icon: '$(trash)' },
+      { command: 'routebox.revealProject', title: 'Routebox: Reveal in File Manager' },
+      { command: 'routebox.openProjectInCurrentWindow', title: 'Open Project' },
     ]);
 
     assert.deepEqual(contributes.viewsContainers, {
       activitybar: [{
-        id: 'workspaceAtlas',
-        title: 'Workspace Atlas',
-        icon: 'resources/workspace-routes-thin.svg',
+        id: 'routebox',
+        title: 'Routebox',
+        icon: 'resources/routebox.svg',
       }],
     });
     const menus = contributes.menus as Record<string, unknown>;
     assert.deepEqual(menus['view/title'], [
-      { command: 'workspaceAtlas.addProject', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
-      { command: 'workspaceAtlas.refreshWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@2' },
-      { command: 'workspaceAtlas.showExcludedWorkspaces', when: 'view == workspaceAtlas.workspaces', group: 'navigation@3' },
-      { command: 'workspaceAtlas.addDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@1' },
-      { command: 'workspaceAtlas.removeDiscoveryRoot', when: 'view == workspaceAtlas.workspaces', group: 'management@2' },
+      { command: 'routebox.addProject', when: 'view == routebox.projects', group: 'navigation@1' },
+      { command: 'routebox.refreshProjects', when: 'view == routebox.projects', group: 'navigation@2' },
+      { command: 'routebox.showExcludedWorkspaces', when: 'view == routebox.projects', group: 'navigation@3' },
+      { command: 'routebox.addDiscoveryRoot', when: 'view == routebox.projects', group: 'management@1' },
+      { command: 'routebox.removeDiscoveryRoot', when: 'view == routebox.projects', group: 'management@2' },
     ]);
     assert.deepEqual(menus['view/item/context'], [
-      { command: 'workspaceAtlas.openWorkspaceInNewWindow', when: 'view == workspaceAtlas.workspaces', group: 'inline@1' },
-      { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'inline@2' },
-      { command: 'workspaceAtlas.renameWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'manage@1' },
-      { command: 'workspaceAtlas.resetWorkspaceName', when: 'view == workspaceAtlas.workspaces', group: 'manage@2' },
-      { command: 'workspaceAtlas.removeWorkspace', when: 'view == workspaceAtlas.workspaces', group: 'manage@3' },
-      { command: 'workspaceAtlas.revealWorkspaceFile', when: 'view == workspaceAtlas.workspaces', group: 'navigation@1' },
+      { command: 'routebox.openProjectInNewWindow', when: 'view == routebox.projects', group: 'inline@1' },
+      { command: 'routebox.removeProject', when: 'view == routebox.projects', group: 'inline@2' },
+      { command: 'routebox.renameProject', when: 'view == routebox.projects', group: 'manage@1' },
+      { command: 'routebox.resetProjectName', when: 'view == routebox.projects', group: 'manage@2' },
+      { command: 'routebox.removeProject', when: 'view == routebox.projects', group: 'manage@3' },
+      { command: 'routebox.revealProject', when: 'view == routebox.projects', group: 'navigation@1' },
     ]);
     assert.deepEqual(contributes.viewsWelcome, [{
-      view: 'workspaceAtlas.workspaces',
-      contents: 'No projects registered.\n[Add Project](command:workspaceAtlas.addProject)\n[Add Discovery Root](command:workspaceAtlas.addDiscoveryRoot)',
+      view: 'routebox.projects',
+      contents: 'No projects registered.\n[Add Project](command:routebox.addProject)\n[Add Discovery Root](command:routebox.addDiscoveryRoot)',
     }]);
+    const configuration = contributes.configuration as {
+      title: string;
+      properties: Record<string, unknown>;
+    };
+    assert.equal(configuration.title, 'Routebox');
+    assert.deepEqual(Object.keys(configuration.properties), ['routebox.discoveryRoots']);
     assert.equal('keybindings' in contributes, false);
   });
 });

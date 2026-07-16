@@ -1,9 +1,11 @@
 # Changelog
 
-All notable changes to Workspace Atlas are documented in this file.
+All notable changes to Routebox are documented in this file.
 
 ## Unreleased
 
+- Establish Routebox as the pre-release product identity with new package,
+  command, view, configuration, and storage identifiers.
 - Add local folders alongside saved `.code-workspace` files.
 - Combine both project kinds in the sidebar and Quick Pick with native
   `file-code` and `folder-opened` Codicons.
@@ -25,7 +27,6 @@ All notable changes to Workspace Atlas are documented in this file.
 - Migrate legacy registry arrays to atomic `{ entries, exclusions }` state with
   an empty initial exclusions list, retaining entries, aliases, provenance, and
   last-opened metadata; retain kind-less legacy entries as workspace files.
-- Preserve existing command IDs and user-defined keyboard shortcuts.
 - Rename the native view and management copy from Workspaces to Projects.
 
 ## 0.1.0

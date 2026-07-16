@@ -38,7 +38,7 @@ export class ProjectTreeItem extends TreeItem {
       ? 'project.manual'
       : 'project.discovered';
     this.command = {
-      command: 'workspaceAtlas.openEntryInCurrentWindow',
+      command: 'routebox.openProjectInCurrentWindow',
       title: 'Open Project',
       arguments: [entry.id],
     };

@@ -24,22 +24,22 @@ import {
 } from '../ui/excludedWorkspaceQuickPick.js';
 
 export const commandIds = {
-  switchProject: 'workspaceAtlas.switchWorkspace',
-  openNewWindow: 'workspaceAtlas.openWorkspaceInNewWindow',
-  addProject: 'workspaceAtlas.addProject',
-  addWorkspace: 'workspaceAtlas.addWorkspace',
-  addFolder: 'workspaceAtlas.addFolder',
-  addDiscoveryRoot: 'workspaceAtlas.addDiscoveryRoot',
-  removeDiscoveryRoot: 'workspaceAtlas.removeDiscoveryRoot',
-  refresh: 'workspaceAtlas.refreshWorkspaces',
-  rename: 'workspaceAtlas.renameWorkspace',
-  resetName: 'workspaceAtlas.resetWorkspaceName',
-  remove: 'workspaceAtlas.removeWorkspace',
-  showExcluded: 'workspaceAtlas.showExcludedWorkspaces',
-  reveal: 'workspaceAtlas.revealWorkspaceFile',
+  switchProject: 'routebox.switchProject',
+  openNewWindow: 'routebox.openProjectInNewWindow',
+  addProject: 'routebox.addProject',
+  addWorkspace: 'routebox.addWorkspace',
+  addFolder: 'routebox.addFolder',
+  addDiscoveryRoot: 'routebox.addDiscoveryRoot',
+  removeDiscoveryRoot: 'routebox.removeDiscoveryRoot',
+  refresh: 'routebox.refreshProjects',
+  rename: 'routebox.renameProject',
+  resetName: 'routebox.resetProjectName',
+  remove: 'routebox.removeProject',
+  showExcluded: 'routebox.showExcludedWorkspaces',
+  reveal: 'routebox.revealProject',
 } as const;
 
-export const openCurrentCommandId = 'workspaceAtlas.openEntryInCurrentWindow';
+export const openCurrentCommandId = 'routebox.openProjectInCurrentWindow';
 
 export interface ProjectUi {
   pickProjectKind(): Promise<ProjectKind | undefined>;
@@ -113,11 +113,11 @@ type EntryArgument = ProjectEntry | string | {
 
 class VscodeDiscoveryRootSettings implements DiscoveryRootSettings {
   configuredRoots(): readonly string[] {
-    return workspace.getConfiguration('workspaceAtlas').get<string[]>('discoveryRoots', []);
+    return workspace.getConfiguration('routebox').get<string[]>('discoveryRoots', []);
   }
 
   async update(roots: readonly string[]): Promise<void> {
-    await workspace.getConfiguration('workspaceAtlas').update(
+    await workspace.getConfiguration('routebox').update(
       'discoveryRoots',
       [...roots],
       ConfigurationTarget.Global,
@@ -238,7 +238,7 @@ export function registerProjectCommands(
     if (result.status === 'kind-mismatch') {
       const expected = entry.kind === 'folder' ? 'folder' : 'workspace file';
       await ui.showWarning(
-        `Project is no longer a ${expected}. Remove it from Workspace Atlas and add it again.`,
+        `Project is no longer a ${expected}. Remove it from Routebox and add it again.`,
       );
     }
   };

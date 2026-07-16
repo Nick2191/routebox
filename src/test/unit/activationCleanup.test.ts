@@ -29,12 +29,12 @@ describe('activation cleanup notification', () => {
 
   it('formats discarded registry records without mentioning migration', () => {
     expect(registryLoadWarning({ discarded: 2, reset: false, migrated: 1 }))
-      .toBe('Workspace Atlas ignored 2 invalid saved projects.');
+      .toBe('Routebox ignored 2 invalid saved projects.');
   });
 
   it('reports a registry reset', () => {
     expect(registryLoadWarning({ discarded: 0, reset: true, migrated: 0 }))
-      .toBe('Workspace Atlas could not read its local registry and started with an empty list.');
+      .toBe('Routebox could not read its local registry and started with an empty list.');
   });
 
   it('keeps migration-only registry loads silent', () => {

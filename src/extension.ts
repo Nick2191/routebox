@@ -41,7 +41,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
   const settings = {
     configuredRoots: (): readonly string[] => workspace
-      .getConfiguration('workspaceAtlas')
+      .getConfiguration('routebox')
       .get<string[]>('discoveryRoots', []),
   };
   const discovery = new WorkspaceDiscoveryService(fs);
@@ -72,7 +72,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     },
     { now: (): number => Date.now() },
   );
-  const treeView = window.createTreeView('workspaceAtlas.workspaces', {
+  const treeView = window.createTreeView('routebox.projects', {
     treeDataProvider: tree,
   });
 
@@ -80,7 +80,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     void coordinator.refresh(reason).catch(
       (error: unknown): void => {
         const detail = error instanceof Error ? error.message : String(error);
-        void window.showWarningMessage(`Workspace Atlas could not refresh projects: ${detail}`);
+        void window.showWarningMessage(`Routebox could not refresh projects: ${detail}`);
       },
     );
   };
@@ -102,7 +102,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       if (event.visible) refresh('view-visible');
     }),
     workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('workspaceAtlas.discoveryRoots')) {
+      if (event.affectsConfiguration('routebox.discoveryRoots')) {
         refresh('settings-change');
       }
     }),
@@ -127,11 +127,11 @@ export function registryLoadWarning(result: {
   migrated: number;
 }): string | undefined {
   if (result.reset) {
-    return 'Workspace Atlas could not read its local registry and started with an empty list.';
+    return 'Routebox could not read its local registry and started with an empty list.';
   }
   if (result.discarded <= 0) return undefined;
   const suffix = result.discarded === 1 ? 'project' : 'projects';
-  return `Workspace Atlas ignored ${result.discarded} invalid saved ${suffix}.`;
+  return `Routebox ignored ${result.discarded} invalid saved ${suffix}.`;
 }
 
 export function deactivate(): void {}
