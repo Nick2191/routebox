@@ -6,6 +6,20 @@
   "preview": true,
   "publisher": "nick",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nick2191/routebox.git"
+  },
+  "homepage": "https://github.com/Nick2191/routebox#readme",
+  "bugs": {
+    "url": "https://github.com/Nick2191/routebox/issues"
+  },
+  "pricing": "Free",
+  "icon": "resources/routebox-marketplace.png",
+  "galleryBanner": {
+    "color": "#172033",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.114.0"
   },
@@ -206,18 +220,18 @@
     "vsix": "npm run package && vsce package"
   },
   "devDependencies": {
-    "@eslint/js": "latest",
+    "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "latest",
-    "@types/vscode": "^1.114.0",
+    "@types/node": "^22.0.0",
+    "@types/vscode": "1.110.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
-    "@vscode/vsce": "latest",
-    "esbuild": "latest",
-    "eslint": "latest",
-    "typescript": "latest",
-    "typescript-eslint": "latest",
-    "vitest": "latest",
-    "vscode-uri": "latest"
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.7.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10",
+    "vscode-uri": "^3.1.0"
   }
 }
