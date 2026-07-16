@@ -5,4 +5,5 @@ out/
 coverage/
 *.vsix
 .superpowers/
+.worktrees/
 *.code-workspace
