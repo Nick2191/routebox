@@ -122,7 +122,7 @@ describe('project smoke semantics', () => {
   });
 
   it('registers, discovers, aliases, opens, cleans stale projects, and removes without deleting', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'workspace-atlas-smoke-'));
+    const root = await mkdtemp(join(tmpdir(), 'routebox-smoke-'));
     temporaryRoots.push(root);
     const manualDirectory = join(root, 'manual');
     const folderPath = join(root, 'folder');

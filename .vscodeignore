@@ -10,6 +10,7 @@ coverage/**
 docs/**
 dist/**/*.map
 *.vsix
+*.code-workspace
 *.config.*
 esbuild.mjs
 tsconfig*.json
