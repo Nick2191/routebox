@@ -109,9 +109,11 @@ Quick Pick command or any other Routebox command.
 Routebox collects no telemetry and sends no network requests. Its project
 registry is stored locally in VS Code extension storage and is not synchronized.
 
-Routebox reads only the local folders, workspace files, and discovery roots you
-select. Removing a project from Routebox never deletes, moves, or modifies the
-underlying file or folder.
+Routebox reads the local folders and workspace files you add, the discovery roots
+you configure, and a local workspace area it infers automatically when a saved
+`.code-workspace` file is open. It uses these locations only to discover and
+validate Routebox projects. Removing a project from Routebox never deletes,
+moves, or modifies the underlying file or folder.
 
 For help, see [SUPPORT.md](SUPPORT.md). Report suspected vulnerabilities through
 the private process in [SECURITY.md](SECURITY.md).

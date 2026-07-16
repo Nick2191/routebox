@@ -15,4 +15,5 @@ Remove usernames, private repository names, tokens, and confidential filesystem
 paths from screenshots and logs.
 
 Do not report suspected security vulnerabilities in a public issue. Follow
-[SECURITY.md](SECURITY.md) instead.
+[GitHub's private vulnerability reporting](https://github.com/Nick2191/routebox/security/advisories/new)
+instead.
