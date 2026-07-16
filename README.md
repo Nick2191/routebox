@@ -2,10 +2,22 @@
 
 Your local workspace switcher for VS Code.
 
-Routebox keeps saved `.code-workspace` files and folders together in a dedicated
-Activity Bar view. Add the projects you use, discover workspace files beneath
-configured roots, give either kind a shorter name, and open them without hunting
-through the filesystem.
+Routebox keeps saved `.code-workspace` files and folders together in one native
+sidebar. Open a project in the current window, launch it in a new window, or use
+the Quick Pick when your hands are already on the keyboard.
+
+![Routebox sidebar](docs/images/routebox-sidebar.png)
+
+## Highlights
+
+- Keep workspace files and folders in one project list.
+- Discover `.code-workspace` files beneath selected local roots.
+- Switch in the current window or open a separate VS Code window.
+- Assign display aliases without renaming anything on disk.
+- Exclude discovered workspaces and restore them later.
+- Use only native VS Code views, Quick Picks, commands, and theme colors.
+
+![Routebox Quick Pick](docs/images/routebox-quick-pick.png)
 
 ## Add projects
 
@@ -72,8 +84,8 @@ Discovered workspace files retain watcher-driven cleanup: Routebox watches activ
 ```json
 {
   "routebox.discoveryRoots": [
-    "file:///Users/nick/Projects",
-    "file:///C:/Users/Nick/Projects"
+    "file:///Users/example/Projects",
+    "file:///C:/Users/example/Projects"
   ]
 }
 ```
@@ -92,9 +104,23 @@ Routebox does not install default keybindings. Open VS Code's **Keyboard
 Shortcuts** editor, search for `Routebox`, and assign shortcuts to either project
 Quick Pick command or any other Routebox command.
 
+## Privacy and security
+
+Routebox collects no telemetry and sends no network requests. Its project
+registry is stored locally in VS Code extension storage and is not synchronized.
+
+Routebox reads only the local folders, workspace files, and discovery roots you
+select. Removing a project from Routebox never deletes, moves, or modifies the
+underlying file or folder.
+
+For help, see [SUPPORT.md](SUPPORT.md). Report suspected vulnerabilities through
+the private process in [SECURITY.md](SECURITY.md).
+
 ## Limitations
 
-- Desktop VS Code and local `file:` workspace files and folders only.
+- Desktop VS Code and local `file:` workspace files and folders only. Virtual
+  workspaces, VS Code for the Web, and remote workspace management are not
+  supported.
 - Discovery roots find saved `.code-workspace` files only; folders must be added manually.
 - No Git repository or branch awareness.
 - No native tab management; current-window and new-window opening use VS Code's standard workspace behavior.
