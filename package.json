@@ -20,6 +20,18 @@
     "color": "#172033",
     "theme": "dark"
   },
+  "extensionKind": [
+    "ui"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Routebox manages local workspace files and folders."
+    }
+  },
   "engines": {
     "vscode": "^1.114.0"
   },

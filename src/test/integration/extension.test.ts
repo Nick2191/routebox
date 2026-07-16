@@ -62,6 +62,14 @@ suite('Routebox extension', () => {
       'folder',
       'project switcher',
     ]);
+    assert.deepEqual(manifest.extensionKind, ['ui']);
+    assert.deepEqual(manifest.capabilities, {
+      untrustedWorkspaces: { supported: true },
+      virtualWorkspaces: {
+        supported: false,
+        description: 'Routebox manages local workspace files and folders.',
+      },
+    });
     const contributes = (extension.packageJSON as { contributes?: Record<string, unknown> })
       .contributes;
     assert.ok(contributes);
