@@ -1,5 +1,6 @@
 .github/**
 .vscode/**
+.worktrees/**
 .superpowers/**
 .vscode-test*
 .gitignore

@@ -10,4 +10,11 @@ describe('Marketplace assets', () => {
     expect(png.readUInt32BE(16)).toBe(256);
     expect(png.readUInt32BE(20)).toBe(256);
   });
+
+  it('excludes local worktrees from Marketplace packages', () => {
+    const ignoreRules = readFileSync(resolve(process.cwd(), '.vscodeignore'), 'utf8')
+      .split(/\r?\n/);
+
+    expect(ignoreRules).toContain('.worktrees/**');
+  });
 });
