@@ -1,10 +1,21 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 
+function routeboxExtension(): vscode.Extension<unknown> {
+  const extension = vscode.extensions.all.find(candidate => {
+    const manifest = candidate.packageJSON as { name?: unknown; displayName?: unknown };
+    return manifest.name === 'routebox' && manifest.displayName === 'Routebox';
+  });
+  assert.ok(extension);
+  const manifest = extension.packageJSON as { publisher?: unknown };
+  assert.ok(typeof manifest.publisher === 'string');
+  assert.equal(extension.id, `${manifest.publisher}.routebox`);
+  return extension;
+}
+
 suite('Routebox extension', () => {
   test('activates and registers its public commands', async () => {
-    const extension = vscode.extensions.getExtension('nick.routebox');
-    assert.ok(extension);
+    const extension = routeboxExtension();
     await extension.activate();
     const commands = await vscode.commands.getCommands(true);
     for (const id of [
@@ -26,8 +37,41 @@ suite('Routebox extension', () => {
   });
 
   test('contributes its complete workbench surface without keybindings', () => {
-    const extension = vscode.extensions.getExtension('nick.routebox');
-    assert.ok(extension);
+    const extension = routeboxExtension();
+    const manifest = extension.packageJSON as Record<string, unknown>;
+    assert.equal(manifest.version, '1.0.0');
+    assert.equal('preview' in manifest, false);
+    assert.deepEqual(manifest.repository, {
+      type: 'git',
+      url: 'https://github.com/Nick2191/routebox.git',
+    });
+    assert.equal(manifest.homepage, 'https://github.com/Nick2191/routebox#readme');
+    assert.deepEqual(manifest.bugs, {
+      url: 'https://github.com/Nick2191/routebox/issues',
+    });
+    assert.equal(manifest.pricing, 'Free');
+    assert.equal(manifest.icon, 'resources/routebox-marketplace.png');
+    assert.deepEqual(manifest.galleryBanner, {
+      color: '#172033',
+      theme: 'dark',
+    });
+    assert.deepEqual(manifest.categories, ['Other']);
+    assert.deepEqual(manifest.keywords, [
+      'workspace',
+      'switcher',
+      'code-workspace',
+      'project manager',
+      'folder',
+      'project switcher',
+    ]);
+    assert.deepEqual(manifest.extensionKind, ['ui']);
+    assert.deepEqual(manifest.capabilities, {
+      untrustedWorkspaces: { supported: true },
+      virtualWorkspaces: {
+        supported: false,
+        description: 'Routebox manages local workspace files and folders.',
+      },
+    });
     const contributes = (extension.packageJSON as { contributes?: Record<string, unknown> })
       .contributes;
     assert.ok(contributes);

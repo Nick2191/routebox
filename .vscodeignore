@@ -8,7 +8,9 @@ node_modules/**
 out/**
 coverage/**
 docs/**
+SECURITY.md
 dist/**/*.map
+resources/marketplace-icons/**
 *.vsix
 *.code-workspace
 *.config.*
