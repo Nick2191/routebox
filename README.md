@@ -127,13 +127,6 @@ the private process in [SECURITY.md](SECURITY.md).
 - No Git repository or branch awareness.
 - No native tab management; current-window and new-window opening use VS Code's standard workspace behavior.
 
-## Upgrading from the development preview
-
-Routebox has a new extension identity. Uninstall the previous local development
-VSIX, install Routebox, add your projects and discovery roots again, and
-reassign any custom shortcuts. Routebox does not read or delete the previous
-extension's local registry or settings.
-
 ## Development
 
 Requires Node.js 22 and a compatible desktop VS Code installation.
