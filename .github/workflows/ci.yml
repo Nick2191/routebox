@@ -53,7 +53,7 @@ jobs:
           grep -Fx 'resources/routebox-marketplace.png' /tmp/routebox-package-files.txt
           grep -Fx 'README.md' /tmp/routebox-package-files.txt
           grep -Fx 'SUPPORT.md' /tmp/routebox-package-files.txt
-          ! grep -E '(^|/)(src|docs|node_modules|\.vscode)/|\.code-workspace$|\.test\.' /tmp/routebox-package-files.txt
+          ! grep -E '(^|/)(src|docs|node_modules|\.vscode|\.worktrees)/|\.code-workspace$|\.test\.' /tmp/routebox-package-files.txt
       - run: npm run vsix
       - name: Verify VSIX archive and size
         shell: bash
@@ -63,7 +63,7 @@ jobs:
           test "$(stat -c%s "${packages[0]}")" -lt 1048576
           unzip -Z1 "${packages[0]}" | tee /tmp/routebox-vsix-files.txt
           grep -F 'extension/resources/routebox-marketplace.png' /tmp/routebox-vsix-files.txt
-          ! grep -E 'extension/(src|docs|node_modules|\.vscode)/|\.code-workspace$|\.test\.' /tmp/routebox-vsix-files.txt
+          ! grep -E 'extension/(src|docs|node_modules|\.vscode|\.worktrees)/|\.code-workspace$|\.test\.' /tmp/routebox-vsix-files.txt
       - uses: actions/upload-artifact@v4
         with:
           name: routebox-vsix
